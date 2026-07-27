@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<!-- Keeper Tracker v1.0.0 | Updated: 2026-07-27 -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Keeper Tracker</title>
+<meta name="description" content="Keeper eligibility tracker for a Sleeper fantasy football keeper league.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1f3d">
+<link rel="icon" href="icons/icon-192.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#ffffff;
+    --bg-alt:#f4f6fb;
+    --navy:#0f1f3d;
+    --green:#0ea86b;
+    --red:#e03040;
+    --gold:#d4900a;
+    --border:#e3e7f0;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:#f4f6fb;
+    color:#0f1f3d;
+    font-family:'Figtree',system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  #app{
+    max-width:430px;
+    margin:0 auto;
+    min-height:100vh;
+    background:#ffffff;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+  h1,h2,h3{
+    font-family:'Bebas Neue',sans-serif;
+    letter-spacing:0.03em;
+    margin:0;
+    color:#0f1f3d;
+  }
+  .mono{
+    font-family:'DM Mono',monospace;
+  }
+  a{color:inherit;}
+  button{font-family:inherit;}
+
+  /* ---------- Header ---------- */
+  .topbar{
+    background:#0f1f3d;
+    color:#ffffff;
+    padding:18px 16px 14px;
+    position:sticky;
+    top:0;
+    z-index:20;
+  }
+  .topbar-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .back-btn{
+    background:none;
+    border:none;
+    color:#ffffff;
+    font-size:22px;
+    padding:0 6px 0 0;
+    cursor:pointer;
+    line-height:1;
+  }
+  .topbar h1{
+    font-size:26px;
+    color:#ffffff;
+    line-height:1;
+  }
+  .topbar .sub{
+    font-family:'DM Mono',monospace;
+    font-size:11px;
+    color:#9fb0d1;
+    margin-top:4px;
+    letter-spacing:0.02em;
+  }
+
+  /* ---------- Tab bar ---------- */
+  .tabbar{
+    display:flex;
+    border-top:1px solid #e3e7f0;
+    background:#ffffff;
+    position:sticky;
+    bottom:0;
+    z-index:20;
+  }
+  .tab-btn{
+    flex:1;
+    background:none;
+    border:none;
+    padding:10px 4px 8px;
+    text-align:center;
+    cursor:pointer;
+    color:#8892a6;
+  }
+  .tab-btn .tab-icon{
+    display:block;
+    font-size:18px;
+    margin-bottom:2px;
+  }
+  .tab-btn .tab-label{
+    font-family:'DM Mono',monospace;
+    font-size:10px;
+    letter-spacing:0.03em;
+    text-transform:uppercase;
+  }
+  .tab-btn.active{
+    color:#0f1f3d;
+  }
+  .tab-btn.active .tab-label{
+    font-weight:700;
+  }
+
+  /* ---------- Main content ---------- */
+  .screen{
+    flex:1;
+    padding:14px 14px 24px;
+    background:#f4f6fb;
+  }
+  .screen.hidden{display:none;}
+
+  /* ---------- Cards ---------- */
+  .card{
+    background:#ffffff;
+    border:1px solid #e3e7f0;
+    border-radius:12px;
+    box-shadow:0 3px 0 rgba(15,31,61,0.12);
+    padding:12px 14px;
+    margin-bottom:12px;
+  }
+  .card:active{
+    transform:translateY(1px);
+    box-shadow:0 2px 0 rgba(15,31,61,0.12);
+  }
+
+  .manager-card{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    cursor:pointer;
+  }
+  .avatar{
+    width:46px;
+    height:46px;
+    border-radius:10px;
+    background:#0f1f3d;
+    color:#fff;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:'Bebas Neue',sans-serif;
+    font-size:18px;
+    flex-shrink:0;
+    overflow:hidden;
+  }
+  .avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+  .manager-info{flex:1;min-width:0;}
+  .manager-name{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:19px;
+    line-height:1.1;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .team-name{
+    font-family:'DM Mono',monospace;
+    font-size:11px;
+    color:#66708a;
+    margin-top:2px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .manager-counts{
+    display:flex;
+    gap:8px;
+    margin-top:6px;
+    flex-wrap:wrap;
+  }
+  .pill{
+    font-family:'DM Mono',monospace;
+    font-size:11px;
+    padding:2px 8px;
+    border-radius:20px;
+    font-weight:500;
+    white-space:nowrap;
+  }
+  .pill-green{background:rgba(14,168,107,0.12);color:#0ea86b;}
+  .pill-red{background:rgba(224,48,64,0.12);color:#e03040;}
+  .pill-gold{background:rgba(212,144,10,0.14);color:#d4900a;}
+  .chevron{color:#c2c9d9;font-size:20px;flex-shrink:0;}
+
+  /* ---------- Section headers ---------- */
+  .section-head{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:20px 0 10px;
+  }
+  .section-head:first-child{margin-top:4px;}
+  .section-dot{
+    width:10px;height:10px;border-radius:50%;flex-shrink:0;
+  }
+  .section-head h2{font-size:20px;}
+  .section-count{
+    font-family:'DM Mono',monospace;
+    font-size:12px;
+    color:#8892a6;
+    margin-left:auto;
+  }
+
+  /* ---------- Player rows ---------- */
+  .player-row{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    padding:10px 0;
+    border-bottom:1px solid #eef0f6;
+  }
+  .player-row:last-child{border-bottom:none;}
+  .pos-badge{
+    font-family:'DM Mono',monospace;
+    font-size:10px;
+    font-weight:700;
+    color:#ffffff;
+    background:#0f1f3d;
+    border-radius:5px;
+    padding:3px 5px;
+    min-width:30px;
+    text-align:center;
+    margin-top:2px;
+    flex-shrink:0;
+  }
+  .player-info{flex:1;min-width:0;}
+  .player-name{
+    font-weight:600;
+    font-size:14.5px;
+    line-height:1.3;
+  }
+  .player-meta{
+    font-family:'DM Mono',monospace;
+    font-size:11px;
+    color:#8892a6;
+    margin-top:2px;
+  }
+  .player-reason{
+    font-size:12px;
+    color:#66708a;
+    margin-top:3px;
+    line-height:1.35;
+  }
+  .status-dot{
+    width:9px;height:9px;border-radius:50%;
+    margin-top:5px;
+    flex-shrink:0;
+  }
+  .dot-green{background:#0ea86b;}
+  .dot-red{background:#e03040;}
+  .dot-gold{background:#d4900a;}
+
+  /* ---------- Empty / loading / error ---------- */
+  .state-block{
+    text-align:center;
+    padding:60px 20px;
+    color:#66708a;
+  }
+  .state-block h3{font-size:22px;margin-bottom:8px;}
+  .state-block p{font-size:13.5px;line-height:1.5;margin:0 0 16px;}
+  .spinner{
+    width:34px;height:34px;
+    border:3px solid #e3e7f0;
+    border-top-color:#0f1f3d;
+    border-radius:50%;
+    margin:0 auto 16px;
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .btn{
+    display:inline-block;
+    background:#0f1f3d;
+    color:#ffffff;
+    border:none;
+    border-radius:8px;
+    padding:11px 20px;
+    font-family:'DM Mono',monospace;
+    font-size:13px;
+    font-weight:500;
+    cursor:pointer;
+    box-shadow:0 3px 0 rgba(15,31,61,0.35);
+  }
+  .btn:active{transform:translateY(1px);box-shadow:0 2px 0 rgba(15,31,61,0.35);}
+
+  .text-input{
+    width:100%;
+    padding:11px 12px;
+    border:1px solid #cdd4e3;
+    border-radius:8px;
+    font-family:'DM Mono',monospace;
+    font-size:14px;
+    margin-bottom:12px;
+    background:#f4f6fb;
+    color:#0f1f3d;
+  }
+
+  /* ---------- Traded players board ---------- */
+  .trade-card{
+    background:#ffffff;
+    border:1px solid #e3e7f0;
+    border-radius:12px;
+    box-shadow:0 3px 0 rgba(15,31,61,0.12);
+    padding:12px 14px;
+    margin-bottom:10px;
+  }
+  .trade-flow{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-family:'DM Mono',monospace;
+    font-size:11px;
+    color:#66708a;
+    margin-top:6px;
+    flex-wrap:wrap;
+  }
+  .trade-flow .arrow{color:#c2c9d9;}
+  .filter-row{
+    display:flex;
+    gap:8px;
+    margin-bottom:14px;
+    overflow-x:auto;
+    padding-bottom:2px;
+  }
+  .filter-chip{
+    font-family:'DM Mono',monospace;
+    font-size:11.5px;
+    padding:7px 12px;
+    border-radius:20px;
+    border:1px solid #cdd4e3;
+    background:#ffffff;
+    color:#0f1f3d;
+    white-space:nowrap;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .filter-chip.active{
+    background:#0f1f3d;
+    color:#ffffff;
+    border-color:#0f1f3d;
+  }
+
+  /* ---------- About screen ---------- */
+  .about-block{margin-bottom:20px;}
+  .about-block h3{font-size:19px;margin-bottom:6px;color:#0f1f3d;}
+  .about-block p, .about-block li{
+    font-size:14px;
+    line-height:1.55;
+    color:#33394a;
+    margin:0 0 8px;
+  }
+  .about-block ul{padding-left:20px;margin:0 0 8px;}
+  .legend-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13.5px;}
+
+  .league-select-wrap{padding:16px 4px 4px;}
+
+  ::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar">
+    <div class="topbar-row" id="topbarRow">
+      <button class="back-btn hidden" id="backBtn" aria-label="Back">&#8592;</button>
+      <div>
+        <h1 id="screenTitle">Keeper Tracker</h1>
+      </div>
+    </div>
+    <div class="sub" id="topbarSub">loading league...</div>
+  </div>
+
+  <!-- SCREEN 1: League Overview -->
+  <div class="screen" id="screen-overview">
+    <div id="overviewContent">
+      <div class="state-block"><div class="spinner"></div><p>Loading league data from Sleeper...</p></div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: Manager Detail -->
+  <div class="screen hidden" id="screen-manager">
+    <div id="managerContent"></div>
+  </div>
+
+  <!-- SCREEN 3: Traded Players Board -->
+  <div class="screen hidden" id="screen-traded">
+    <div id="tradedContent"></div>
+  </div>
+
+  <!-- SCREEN 4: About -->
+  <div class="screen hidden" id="screen-about">
+    <div class="about-block">
+      <h3>The Rule</h3>
+      <p>A player who is <strong>traded during the season becomes ineligible to keep</strong> for the manager who receives them. Only the manager who originally drafted the player may keep them &mdash; <strong>unless</strong> the player gets cut and re-added by someone (including the original drafter), in which case the player becomes keeper-eligible again for whoever picks them up.</p>
+    </div>
+    <div class="about-block">
+      <h3>How This Works</h3>
+      <p>This tool reads your league's public Sleeper transaction history and, for every player currently rostered, walks backward through every trade, waiver claim and free-agent pickup to find the most recent way that player joined their current roster:</p>
+      <ul>
+        <li>No transaction on record for this roster &rarr; the manager drafted them. <strong>Eligible.</strong></li>
+        <li>Most recent add was a <strong>trade</strong> &rarr; <strong>Not eligible.</strong> Only the original drafter could have kept them.</li>
+        <li>Most recent add was a <strong>waiver claim or free agent pickup</strong> &rarr; the player was cut and re-added. <strong>Eligible</strong> for whoever picked them up.</li>
+      </ul>
+      <p>Only transactions with status <span class="mono">complete</span> count &mdash; vetoed and failed moves are ignored.</p>
+    </div>
+    <div class="about-block">
+      <h3>Legend</h3>
+      <div class="legend-row"><span class="status-dot dot-green"></span> Keeper-eligible</div>
+      <div class="legend-row"><span class="status-dot dot-red"></span> Not keeper-eligible</div>
+      <div class="legend-row"><span class="status-dot dot-gold"></span> Edge case &mdash; needs human review</div>
+    </div>
+    <div class="about-block">
+      <h3>A Note On Edge Cases</h3>
+      <p>Weird transaction sequences (e.g. a manager re-acquiring a player they themselves traded away) get flagged gold rather than guessed at. This is a shared, automated tool with no manual override &mdash; if something looks wrong, hash it out in the group chat.</p>
+    </div>
+    <div class="about-block">
+      <h3>Data Source</h3>
+      <p>Everything is computed live, in your browser, from Sleeper's public API. No login, no accounts, no backend, no data stored anywhere except your browser's local session cache (to avoid re-downloading the ~10MB player database).</p>
+    </div>
+  </div>
+
+  <div class="tabbar" id="tabbar">
+    <button class="tab-btn active" data-tab="overview">
+      <span class="tab-icon">&#128202;</span>
+      <span class="tab-label">Overview</span>
+    </button>
+    <button class="tab-btn" data-tab="traded">
+      <span class="tab-icon">&#128257;</span>
+      <span class="tab-label">Traded</span>
+    </button>
+    <button class="tab-btn" data-tab="about">
+      <span class="tab-icon">&#8505;</span>
+      <span class="tab-label">About</span>
+    </button>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  // CONFIG
+  // ============================================================
+  // REPLACE this with your league's real Sleeper league ID, e.g. '123456789012345678'.
+  // Overridden by ?league=XXXXXXXXX in the URL at any time.
+  var DEFAULT_LEAGUE_ID = '';
+
+  var API = 'https://api.sleeper.app/v1';
+  var WEEKS = []; // 0 (preseason) through 18
+  for (var w = 0; w <= 18; w++) WEEKS.push(w);
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  var leagueId = '';
+  var leagueMeta = {};
+  var managers = [];          // [{user_id, roster_id, display_name, team_name, avatar}]
+  var allPlayers = {};        // full NFL DB
+  var allTransactions = [];   // flat array, all weeks
+  var currentRosters = {};    // { roster_id: [player_ids] }
+  var eligibilityMap = {};    // { player_id: {...} }
+  var managersByRoster = {};  // roster_id -> manager
+
+  var currentTab = 'overview';
+  var currentManagerRosterId = null;
+  var tradedFilter = 'all';
+
+  // ============================================================
+  // DOM HELPERS
+  // ============================================================
+  function $(id){ return document.getElementById(id); }
+  function esc(s){
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  // ============================================================
+  // SLEEPER API
+  // ============================================================
+  function fetchJSON(url){
+    return fetch(url).then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + url);
+      return r.json();
+    });
+  }
+
+  function loadPlayers(){
+    var cached = null;
+    try { cached = sessionStorage.getItem('sleeperPlayers'); } catch(e){}
+    if (cached) {
+      try {
+        return Promise.resolve(JSON.parse(cached));
+      } catch(e){ /* fall through to re-fetch */ }
+    }
+    return fetchJSON(API + '/players/nfl').then(function(data){
+      try { sessionStorage.setItem('sleeperPlayers', JSON.stringify(data)); } catch(e){ /* quota - ignore, still works in memory */ }
+      return data;
+    });
+  }
+
+  function loadAllTransactions(lid){
+    var promises = WEEKS.map(function(week){
+      return fetchJSON(API + '/league/' + lid + '/transactions/' + week)
+        .catch(function(){ return []; }); // empty/missing week -> just skip
+    });
+    return Promise.all(promises).then(function(results){
+      var flat = [];
+      results.forEach(function(weekTx){
+        if (Array.isArray(weekTx)) flat = flat.concat(weekTx);
+      });
+      flat.sort(function(a,b){
+        return (a.status_updated || a.created || 0) - (b.status_updated || b.created || 0);
+      });
+      return flat;
+    });
+  }
+
+  // ============================================================
+  // LOAD + BOOTSTRAP
+  // ============================================================
+  function getLeagueIdFromUrl(){
+    var params = new URLSearchParams(window.location.search);
+    return params.get('league') || '';
+  }
+
+  function boot(){
+    leagueId = getLeagueIdFromUrl() || DEFAULT_LEAGUE_ID;
+
+    if (!leagueId) {
+      showError(new Error('No league ID configured'));
+      return;
+    }
+
+    var sessionKey = 'keeperTrackerCache_' + leagueId;
+    var cached = null;
+    try { cached = sessionStorage.getItem(sessionKey); } catch(e){}
+    if (cached) {
+      try {
+        var parsed = JSON.parse(cached);
+        leagueMeta = parsed.leagueMeta;
+        managers = parsed.managers;
+        currentRosters = parsed.currentRosters;
+        eligibilityMap = parsed.eligibilityMap;
+        rebuildManagersByRoster();
+        renderShellReady();
+        render();
+        return;
+      } catch(e){ /* fall through to fresh load */ }
+    }
+
+    loadFresh(leagueId, sessionKey);
+  }
+
+  function loadFresh(lid, sessionKey){
+    showLoading();
+
+    Promise.all([
+      fetchJSON(API + '/league/' + lid),
+      fetchJSON(API + '/league/' + lid + '/users'),
+      fetchJSON(API + '/league/' + lid + '/rosters'),
+      loadPlayers(),
+      loadAllTransactions(lid)
+    ]).then(function(results){
+      leagueMeta = results[0] || {};
+      var users = results[1] || [];
+      var rosters = results[2] || [];
+      allPlayers = results[3] || {};
+      allTransactions = results[4] || [];
+
+      if (!leagueMeta || !leagueMeta.league_id) {
+        throw new Error('League not found');
+      }
+
+      var usersById = {};
+      users.forEach(function(u){ usersById[u.user_id] = u; });
+
+      managers = rosters.map(function(r){
+        var u = usersById[r.owner_id] || {};
+        var meta = u.metadata || {};
+        return {
+          user_id: r.owner_id,
+          roster_id: r.roster_id,
+          display_name: u.display_name || 'Manager ' + r.roster_id,
+          team_name: meta.team_name || u.display_name || ('Team ' + r.roster_id),
+          avatar: u.avatar || null
+        };
+      });
+      managers.sort(function(a,b){ return a.roster_id - b.roster_id; });
+      rebuildManagersByRoster();
+
+      currentRosters = {};
+      rosters.forEach(function(r){
+        currentRosters[r.roster_id] = (r.players || []).slice();
+      });
+
+      eligibilityMap = computeEligibility();
+
+      try {
+        sessionStorage.setItem(sessionKey, JSON.stringify({
+          leagueMeta: leagueMeta,
+          managers: managers,
+          currentRosters: currentRosters,
+          eligibilityMap: eligibilityMap,
+          ts: Date.now()
+        }));
+      } catch(e){ /* quota - ignore */ }
+
+      renderShellReady();
+      render();
+    }).catch(function(err){
+      showError(err);
+    });
+  }
+
+  function rebuildManagersByRoster(){
+    managersByRoster = {};
+    managers.forEach(function(m){ managersByRoster[m.roster_id] = m; });
+  }
+
+  function renderShellReady(){
+    $('topbarSub').textContent = (leagueMeta.name || 'League') + ' • ' + (leagueMeta.season || '');
+  }
+
+  function showLoading(){
+    $('overviewContent').innerHTML =
+      '<div class="state-block"><div class="spinner"></div><p>Loading league data from Sleeper...</p></div>';
+  }
+
+  function showError(err){
+    console.error(err);
+    $('topbarSub').textContent = 'error loading league';
+    $('overviewContent').innerHTML =
+      '<div class="state-block">' +
+        '<h3>Couldn’t load this league</h3>' +
+        '<p>League ID <span class="mono">' + esc(leagueId) + '</span> didn’t return valid data from Sleeper. Double check the ID below.</p>' +
+        '<div class="league-select-wrap">' +
+          '<input class="text-input" id="leagueIdInput" placeholder="Sleeper league ID" value="' + esc(leagueId) + '">' +
+          '<button class="btn" id="leagueIdSubmit">Load League</button>' +
+        '</div>' +
+      '</div>';
+    var btn = $('leagueIdSubmit');
+    if (btn) {
+      btn.addEventListener('click', function(){
+        var val = $('leagueIdInput').value.trim();
+        if (!val) return;
+        var url = new URL(window.location.href);
+        url.searchParams.set('league', val);
+        window.location.href = url.toString();
+      });
+    }
+  }
+
+  // ============================================================
+  // ELIGIBILITY LOGIC
+  // ============================================================
+  function computeEligibility(){
+    // Group complete transactions per player_id, sorted ascending by time.
+    var txByPlayer = {};
+
+    allTransactions.forEach(function(tx){
+      if (!tx || tx.status !== 'complete') return;
+      var ts = tx.status_updated || tx.created || 0;
+      var adds = tx.adds || {};
+      var drops = tx.drops || {};
+      var playerIds = {};
+      Object.keys(adds).forEach(function(pid){ playerIds[pid] = true; });
+      Object.keys(drops).forEach(function(pid){ playerIds[pid] = true; });
+
+      Object.keys(playerIds).forEach(function(pid){
+        if (!txByPlayer[pid]) txByPlayer[pid] = [];
+        txByPlayer[pid].push({
+          type: tx.type,
+          ts: ts,
+          addRoster: (adds[pid] !== undefined && adds[pid] !== null) ? String(adds[pid]) : null,
+          dropRoster: (drops[pid] !== undefined && drops[pid] !== null) ? String(drops[pid]) : null,
+          txid: tx.transaction_id
+        });
+      });
+    });
+
+    Object.keys(txByPlayer).forEach(function(pid){
+      txByPlayer[pid].sort(function(a,b){ return a.ts - b.ts; });
+    });
+
+    var map = {};
+
+    Object.keys(currentRosters).forEach(function(rosterId){
+      var players = currentRosters[rosterId] || [];
+      players.forEach(function(pid){
+        var history = txByPlayer[pid] || [];
+
+        // Find most recent transaction where this player was added to THIS roster.
+        var addEvent = null;
+        for (var i = history.length - 1; i >= 0; i--) {
+          if (history[i].addRoster === String(rosterId)) { addEvent = history[i]; break; }
+        }
+
+        var status, reason, edgeReason = null;
+
+        if (!addEvent) {
+          status = 'eligible';
+          reason = 'Drafted by this manager (no transaction history on this roster).';
+        } else if (addEvent.type === 'trade') {
+          status = 'ineligible';
+          var fromMgr = managersByRoster[addEvent.dropRoster];
+          reason = 'Traded from ' + (fromMgr ? (fromMgr.team_name || fromMgr.display_name) : 'another manager') + '.';
+        } else if (addEvent.type === 'waiver') {
+          status = 'eligible';
+          reason = 'Picked up on waivers after being cut.';
+        } else {
+          status = 'eligible';
+          reason = 'Picked up as a free agent after being cut.';
+        }
+
+        // Edge case: this same roster traded the player away at some point
+        // before re-acquiring them via waiver/FA. Rule says eligible, but
+        // flag for human sanity-check per league convention.
+        if (status === 'eligible' && addEvent) {
+          var tradedAwayBefore = history.some(function(h){
+            return h.type === 'trade' && h.dropRoster === String(rosterId) && h.ts < addEvent.ts;
+          });
+          if (tradedAwayBefore) {
+            edgeReason = 'This manager traded this player away earlier this season and later re-acquired them via waivers/free agency. Ruled eligible per league rule, but flagged for a sanity check.';
+          }
+        }
+
+        var tradeChain = history.filter(function(h){ return h.type === 'trade'; });
+
+        map[pid] = {
+          rosterId: String(rosterId),
+          status: status,
+          reason: reason,
+          edgeReason: edgeReason,
+          isEdge: !!edgeReason,
+          addEvent: addEvent,
+          tradeChain: tradeChain
+        };
+      });
+    });
+
+    return map;
+  }
+
+  // ============================================================
+  // PLAYER HELPERS
+  // ============================================================
+  function playerInfo(pid){
+    var p = allPlayers[pid];
+    if (!p) return { name: 'Unknown Player (' + pid + ')', pos: '--', team: '' };
+    var name = p.full_name || ((p.first_name || '') + ' ' + (p.last_name || '')).trim() || ('Player ' + pid);
+    return {
+      name: name,
+      pos: p.position || '--',
+      team: p.team || 'FA'
+    };
+  }
+
+  var POS_ORDER = { QB:1, RB:2, WR:3, TE:4, K:5, DEF:6 };
+  function posSort(a, b){
+    var pa = POS_ORDER[playerInfo(a).pos] || 9;
+    var pb = POS_ORDER[playerInfo(b).pos] || 9;
+    if (pa !== pb) return pa - pb;
+    return playerInfo(a).name.localeCompare(playerInfo(b).name);
+  }
+
+  function managerName(rosterId){
+    var m = managersByRoster[rosterId];
+    return m ? (m.team_name || m.display_name) : 'Unknown';
+  }
+
+  function avatarHtml(m){
+    if (m.avatar) {
+      return '<div class="avatar"><img src="https://sleepercdn.com/avatars/thumbs/' + esc(m.avatar) + '" alt=""></div>';
+    }
+    var initials = (m.team_name || m.display_name || '?').trim().slice(0,2).toUpperCase();
+    return '<div class="avatar">' + esc(initials) + '</div>';
+  }
+
+  // ============================================================
+  // ROUTER
+  // ============================================================
+  function setTab(tab){
+    currentTab = tab;
+    currentManagerRosterId = null;
+    render();
+  }
+
+  function openManager(rosterId){
+    currentManagerRosterId = String(rosterId);
+    render();
+  }
+
+  function goBack(){
+    currentManagerRosterId = null;
+    render();
+  }
+
+  document.getElementById('tabbar').addEventListener('click', function(e){
+    var btn = e.target.closest('.tab-btn');
+    if (!btn) return;
+    setTab(btn.getAttribute('data-tab'));
+  });
+
+  $('backBtn').addEventListener('click', goBack);
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+  function render(){
+    ['overview','manager','traded','about'].forEach(function(s){
+      $('screen-' + s).classList.add('hidden');
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.tab-btn'), function(btn){
+      btn.classList.toggle('active', btn.getAttribute('data-tab') === currentTab && !currentManagerRosterId);
+    });
+
+    if (currentManagerRosterId) {
+      $('screen-manager').classList.remove('hidden');
+      $('backBtn').classList.remove('hidden');
+      renderManagerDetail(currentManagerRosterId);
+      return;
+    }
+
+    $('backBtn').classList.add('hidden');
+
+    if (currentTab === 'overview') {
+      $('screen-overview').classList.remove('hidden');
+      $('screenTitle').textContent = 'Keeper Tracker';
+      renderOverview();
+    } else if (currentTab === 'traded') {
+      $('screen-traded').classList.remove('hidden');
+      $('screenTitle').textContent = 'Traded Players';
+      renderTraded();
+    } else if (currentTab === 'about') {
+      $('screen-about').classList.remove('hidden');
+      $('screenTitle').textContent = 'About';
+    }
+  }
+
+  function renderOverview(){
+    if (!managers.length) {
+      $('overviewContent').innerHTML = '<div class="state-block"><h3>No managers found</h3><p>This league returned no rosters.</p></div>';
+      return;
+    }
+
+    var html = '<div class="section-head"><h2>Managers</h2><span class="section-count mono">' + managers.length + '</span></div>';
+
+    managers.forEach(function(m){
+      var players = currentRosters[m.roster_id] || [];
+      var eligible = 0, ineligible = 0, edge = 0;
+      players.forEach(function(pid){
+        var e = eligibilityMap[pid];
+        if (!e) return;
+        if (e.isEdge) edge++;
+        else if (e.status === 'eligible') eligible++;
+        else ineligible++;
+      });
+
+      html += '<div class="card manager-card" data-roster="' + m.roster_id + '">' +
+        avatarHtml(m) +
+        '<div class="manager-info">' +
+          '<div class="manager-name">' + esc(m.team_name || m.display_name) + '</div>' +
+          '<div class="team-name">' + esc(m.display_name) + '</div>' +
+          '<div class="manager-counts">' +
+            '<span class="pill pill-green">' + eligible + ' eligible</span>' +
+            '<span class="pill pill-red">' + ineligible + ' not eligible</span>' +
+            (edge ? '<span class="pill pill-gold">' + edge + ' edge</span>' : '') +
+          '</div>' +
+        '</div>' +
+        '<span class="chevron">&#8250;</span>' +
+      '</div>';
+    });
+
+    $('overviewContent').innerHTML = html;
+
+    Array.prototype.forEach.call(
+      document.querySelectorAll('#overviewContent .manager-card'),
+      function(card){
+        card.addEventListener('click', function(){
+          openManager(card.getAttribute('data-roster'));
+        });
+      }
+    );
+  }
+
+  function renderManagerDetail(rosterId){
+    var m = managersByRoster[rosterId];
+    $('screenTitle').textContent = m ? (m.team_name || m.display_name) : 'Manager';
+
+    var players = (currentRosters[rosterId] || []).slice();
+    if (!players.length) {
+      $('managerContent').innerHTML = '<div class="state-block"><h3>Empty roster</h3><p>No players found on this roster.</p></div>';
+      return;
+    }
+
+    var groups = { eligible: [], ineligible: [], edge: [] };
+    players.forEach(function(pid){
+      var e = eligibilityMap[pid];
+      if (!e) { groups.eligible.push(pid); return; }
+      if (e.isEdge) groups.edge.push(pid);
+      else if (e.status === 'eligible') groups.eligible.push(pid);
+      else groups.ineligible.push(pid);
+    });
+
+    groups.eligible.sort(posSort);
+    groups.ineligible.sort(posSort);
+    groups.edge.sort(posSort);
+
+    function renderGroup(title, dotClass, list, showReason){
+      if (!list.length) return '';
+      var out = '<div class="section-head"><span class="section-dot ' + dotClass + '"></span><h2>' + title + '</h2><span class="section-count mono">' + list.length + '</span></div>';
+      out += '<div class="card">';
+      list.forEach(function(pid, idx){
+        var info = playerInfo(pid);
+        var e = eligibilityMap[pid] || {};
+        out += '<div class="player-row">' +
+          '<div class="pos-badge">' + esc(info.pos) + '</div>' +
+          '<div class="player-info">' +
+            '<div class="player-name">' + esc(info.name) + '</div>' +
+            '<div class="player-meta">' + esc(info.team) + '</div>' +
+            (showReason ? '<div class="player-reason">' + esc(e.reason || '') + '</div>' : '') +
+            (e.edgeReason ? '<div class="player-reason" style="color:#d4900a;">' + esc(e.edgeReason) + '</div>' : '') +
+          '</div>' +
+        '</div>';
+      });
+      out += '</div>';
+      return out;
+    }
+
+    var html = '';
+    html += renderGroup('Keeper-Eligible', 'dot-green', groups.eligible, false);
+    html += renderGroup('Not Keeper-Eligible', 'dot-red', groups.ineligible, true);
+    html += renderGroup('Edge Case — Needs Review', 'dot-gold', groups.edge, true);
+
+    $('managerContent').innerHTML = html;
+  }
+
+  function renderTraded(){
+    var tradedPlayerIds = Object.keys(eligibilityMap).filter(function(pid){
+      var e = eligibilityMap[pid];
+      return e.tradeChain && e.tradeChain.length > 0;
+    });
+
+    var html = '<div class="filter-row">' +
+      chip('all', 'All') +
+      chip('eligible', 'Eligible') +
+      chip('ineligible', 'Not Eligible') +
+      chip('edge', 'Edge Case') +
+    '</div>';
+
+    function chip(key, label){
+      return '<button class="filter-chip' + (tradedFilter === key ? ' active' : '') + '" data-filter="' + key + '">' + label + '</button>';
+    }
+
+    var filtered = tradedPlayerIds.filter(function(pid){
+      var e = eligibilityMap[pid];
+      if (tradedFilter === 'all') return true;
+      if (tradedFilter === 'edge') return e.isEdge;
+      if (tradedFilter === 'eligible') return e.status === 'eligible' && !e.isEdge;
+      if (tradedFilter === 'ineligible') return e.status === 'ineligible';
+      return true;
+    });
+
+    if (!filtered.length) {
+      html += '<div class="state-block"><h3>No traded players</h3><p>' + (tradedPlayerIds.length ? 'None match this filter yet.' : 'No players have changed hands via trade this season.') + '</p></div>';
+      $('tradedContent').innerHTML = html;
+      wireTradedFilters();
+      return;
+    }
+
+    filtered.sort(function(a,b){ return playerInfo(a).name.localeCompare(playerInfo(b).name); });
+
+    filtered.forEach(function(pid){
+      var info = playerInfo(pid);
+      var e = eligibilityMap[pid];
+      var chain = e.tradeChain;
+      var originalRoster = chain.length ? chain[0].dropRoster : null;
+      var currentRoster = e.rosterId;
+
+      var dotClass = e.isEdge ? 'dot-gold' : (e.status === 'eligible' ? 'dot-green' : 'dot-red');
+      var pillClass = e.isEdge ? 'pill-gold' : (e.status === 'eligible' ? 'pill-green' : 'pill-red');
+      var statusLabel = e.isEdge ? 'Edge Case' : (e.status === 'eligible' ? 'Eligible' : 'Not Eligible');
+
+      html += '<div class="trade-card">' +
+        '<div class="player-row" style="border:none;padding:0;">' +
+          '<div class="pos-badge">' + esc(info.pos) + '</div>' +
+          '<div class="player-info">' +
+            '<div class="player-name">' + esc(info.name) + '</div>' +
+            '<div class="player-meta">' + esc(info.team) + '</div>' +
+          '</div>' +
+          '<span class="pill ' + pillClass + '"><span class="status-dot ' + dotClass + '" style="display:inline-block;width:7px;height:7px;margin-right:4px;vertical-align:middle;"></span>' + statusLabel + '</span>' +
+        '</div>' +
+        '<div class="trade-flow">' +
+          '<span class="mono">' + esc(originalRoster ? managerName(originalRoster) : '?') + '</span>' +
+          '<span class="arrow">&rarr;</span>' +
+          '<span class="mono">' + esc(managerName(currentRoster)) + '</span>' +
+          (chain.length > 1 ? '<span class="mono" style="color:#c2c9d9;">(' + chain.length + ' trades)</span>' : '') +
+        '</div>' +
+        (e.edgeReason ? '<div class="player-reason" style="color:#d4900a;margin-top:6px;">' + esc(e.edgeReason) + '</div>' : '') +
+      '</div>';
+    });
+
+    $('tradedContent').innerHTML = html;
+    wireTradedFilters();
+  }
+
+  function wireTradedFilters(){
+    Array.prototype.forEach.call(document.querySelectorAll('#tradedContent .filter-chip'), function(chip){
+      chip.addEventListener('click', function(){
+        tradedFilter = chip.getAttribute('data-filter');
+        renderTraded();
+      });
+    });
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  boot();
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){ /* optional, ignore failure */ });
+    });
+  }
+
+})();
+</script>
+</body>
+</html>
