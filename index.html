@@ -425,6 +425,7 @@
         <li>Most recent add was a <strong>waiver claim or free agent pickup</strong> &rarr; the player was cut and re-added. <strong>Eligible</strong> for whoever picked them up.</li>
       </ul>
       <p>Only transactions with status <span class="mono">complete</span> count &mdash; vetoed and failed moves are ignored.</p>
+      <p>Sleeper starts a brand-new league_id each season, resetting the transaction log to empty even though rosters carry over. Since keeper eligibility is decided by what happened <em>last</em> season, this tool reads current rosters from this year's league but reads trade/waiver history from last season's league_id (matched to this year's managers by their Sleeper account, not by roster number, since those can shuffle between seasons).</p>
     </div>
     <div class="about-block">
       <h3>Legend</h3>
@@ -475,25 +476,38 @@
   // Overridden by ?league=XXXXXXXXX in the URL at any time.
   var DEFAULT_LEAGUE_ID = '1369936246280826880';
 
+  // Sleeper mints a brand-new league_id every season for keeper/dynasty
+  // leagues - rosters carry over, but the transaction log resets to empty.
+  // The keeper decision is based on trades made DURING LAST SEASON, so
+  // that history has to be read from last season's league_id, not this
+  // one. Leave blank to auto-detect via the current league's
+  // `previous_league_id`; override per-load with ?history=XXXXXXXXX.
+  var DEFAULT_HISTORY_LEAGUE_ID = '1246152272367341568';
+
   var API = 'https://api.sleeper.app/v1';
   var WEEKS = []; // 0 (preseason) through 18
   for (var w = 0; w <= 18; w++) WEEKS.push(w);
 
   // Bump this whenever eligibility logic changes, so a stale cached result
   // from an earlier (possibly buggy) run doesn't mask a fix on reload.
-  var CACHE_VERSION = 'v2';
+  var CACHE_VERSION = 'v3';
 
   // ============================================================
   // STATE
   // ============================================================
   var leagueId = '';
   var leagueMeta = {};
-  var managers = [];          // [{user_id, roster_id, display_name, team_name, avatar}]
+  var historyLeagueId = '';
+  var managers = [];          // [{user_id, roster_id, display_name, team_name, avatar}] - current league
   var allPlayers = {};        // full NFL DB
-  var allTransactions = [];   // flat array, all weeks
+  var currentTransactions = []; // this season's own transactions (usually empty right after rollover)
+  var historyTransactions = []; // last season's transactions - the real source of truth for trades
+  var ownerByHistoryRoster = {}; // last-season roster_id (string) -> owner user_id (string)
+  var historyManagersByOwner = {}; // owner_id -> {display_name, team_name} fallback for managers no longer in the league
   var currentRosters = {};    // { roster_id: [player_ids] }
   var eligibilityMap = {};    // { player_id: {...} }
-  var managersByRoster = {};  // roster_id -> manager
+  var managersByRoster = {};  // roster_id -> manager (current league)
+  var managersByOwner = {};   // user_id -> manager (current league)
 
   var currentTab = 'overview';
   var currentManagerRosterId = null;
@@ -535,7 +549,7 @@
     });
   }
 
-  function loadAllTransactions(lid){
+  function loadAllTransactions(lid, tag){
     var weekErrors = [];
     var promises = WEEKS.map(function(week){
       return fetchJSON(API + '/league/' + lid + '/transactions/' + week)
@@ -547,7 +561,7 @@
     return Promise.all(promises).then(function(results){
       var flat = [];
       var weeksWithData = 0;
-      results.forEach(function(weekTx, idx){
+      results.forEach(function(weekTx){
         if (Array.isArray(weekTx) && weekTx.length) {
           weeksWithData++;
           flat = flat.concat(weekTx);
@@ -556,11 +570,14 @@
       flat.sort(function(a,b){
         return (a.status_updated || a.created || 0) - (b.status_updated || b.created || 0);
       });
-      diagnostics.txWeeksFetched = WEEKS.length;
-      diagnostics.txWeeksWithData = weeksWithData;
-      diagnostics.txWeekErrors = weekErrors;
-      diagnostics.txRawCount = flat.length;
-      if (weekErrors.length) console.warn('Keeper Tracker: transaction fetch failures', weekErrors);
+      diagnostics[tag] = {
+        leagueId: lid,
+        weeksFetched: WEEKS.length,
+        weeksWithData: weeksWithData,
+        weekErrors: weekErrors,
+        rawCount: flat.length
+      };
+      if (weekErrors.length) console.warn('Keeper Tracker: transaction fetch failures (' + tag + ')', weekErrors);
       return flat;
     });
   }
@@ -571,6 +588,11 @@
   function getLeagueIdFromUrl(){
     var params = new URLSearchParams(window.location.search);
     return params.get('league') || '';
+  }
+
+  function getHistoryLeagueIdFromUrl(){
+    var params = new URLSearchParams(window.location.search);
+    return params.get('history') || '';
   }
 
   function boot(){
@@ -588,9 +610,11 @@
       try {
         var parsed = JSON.parse(cached);
         leagueMeta = parsed.leagueMeta;
+        historyLeagueId = parsed.historyLeagueId || '';
         managers = parsed.managers;
         currentRosters = parsed.currentRosters;
         eligibilityMap = parsed.eligibilityMap;
+        historyManagersByOwner = parsed.historyManagersByOwner || {};
         diagnostics = parsed.diagnostics || {};
         diagnostics.fromCache = true;
         rebuildManagersByRoster();
@@ -620,14 +644,12 @@
       fetchJSON(API + '/league/' + lid),
       fetchJSON(API + '/league/' + lid + '/users'),
       fetchJSON(API + '/league/' + lid + '/rosters'),
-      loadPlayers(),
-      loadAllTransactions(lid)
+      loadPlayers()
     ]).then(function(results){
       leagueMeta = results[0] || {};
       var users = results[1] || [];
       var rosters = results[2] || [];
       allPlayers = results[3] || {};
-      allTransactions = results[4] || [];
 
       if (!leagueMeta || !leagueMeta.league_id) {
         throw new Error('League not found');
@@ -655,21 +677,58 @@
         currentRosters[r.roster_id] = (r.players || []).slice();
       });
 
-      eligibilityMap = computeEligibility();
+      historyLeagueId = getHistoryLeagueIdFromUrl() || DEFAULT_HISTORY_LEAGUE_ID || leagueMeta.previous_league_id || '';
+      diagnostics.historyLeagueId = historyLeagueId;
+      diagnostics.historyLeagueSource = getHistoryLeagueIdFromUrl() ? 'url ?history= param'
+        : (DEFAULT_HISTORY_LEAGUE_ID ? 'configured default' : (leagueMeta.previous_league_id ? 'auto-detected via previous_league_id' : 'none - no prior season found'));
 
-      try {
-        sessionStorage.setItem(sessionKey, JSON.stringify({
-          leagueMeta: leagueMeta,
-          managers: managers,
-          currentRosters: currentRosters,
-          eligibilityMap: eligibilityMap,
-          diagnostics: diagnostics,
-          ts: Date.now()
-        }));
-      } catch(e){ /* quota - ignore */ }
+      var fetches = [ loadAllTransactions(lid, 'current') ];
+      if (historyLeagueId) {
+        fetches.push(fetchJSON(API + '/league/' + historyLeagueId + '/users').catch(function(){ return []; }));
+        fetches.push(fetchJSON(API + '/league/' + historyLeagueId + '/rosters').catch(function(){ return []; }));
+        fetches.push(loadAllTransactions(historyLeagueId, 'history'));
+      }
 
-      renderShellReady();
-      render();
+      return Promise.all(fetches).then(function(res){
+        currentTransactions = res[0] || [];
+        var historyUsers = historyLeagueId ? (res[1] || []) : [];
+        var historyRosters = historyLeagueId ? (res[2] || []) : [];
+        historyTransactions = historyLeagueId ? (res[3] || []) : [];
+
+        var historyUsersById = {};
+        historyUsers.forEach(function(u){ historyUsersById[u.user_id] = u; });
+
+        ownerByHistoryRoster = {};
+        historyManagersByOwner = {};
+        historyRosters.forEach(function(r){
+          var ownerId = String(r.owner_id);
+          ownerByHistoryRoster[String(r.roster_id)] = ownerId;
+          var u = historyUsersById[r.owner_id] || {};
+          var meta = u.metadata || {};
+          historyManagersByOwner[ownerId] = {
+            display_name: u.display_name || 'Manager',
+            team_name: meta.team_name || u.display_name || 'Unknown Team'
+          };
+        });
+
+        eligibilityMap = computeEligibility();
+
+        try {
+          sessionStorage.setItem(sessionKey, JSON.stringify({
+            leagueMeta: leagueMeta,
+            historyLeagueId: historyLeagueId,
+            managers: managers,
+            currentRosters: currentRosters,
+            eligibilityMap: eligibilityMap,
+            historyManagersByOwner: historyManagersByOwner,
+            diagnostics: diagnostics,
+            ts: Date.now()
+          }));
+        } catch(e){ /* quota - ignore */ }
+
+        renderShellReady();
+        render();
+      });
     }).catch(function(err){
       showError(err);
     });
@@ -677,7 +736,20 @@
 
   function rebuildManagersByRoster(){
     managersByRoster = {};
-    managers.forEach(function(m){ managersByRoster[m.roster_id] = m; });
+    managersByOwner = {};
+    managers.forEach(function(m){
+      managersByRoster[m.roster_id] = m;
+      managersByOwner[String(m.user_id)] = m;
+    });
+  }
+
+  function managerDisplayByOwner(ownerId){
+    if (!ownerId) return 'another manager';
+    var m = managersByOwner[ownerId];
+    if (m) return m.team_name || m.display_name;
+    var h = historyManagersByOwner[ownerId];
+    if (h) return (h.team_name || h.display_name) + ' (no longer in league)';
+    return 'a former manager';
   }
 
   function renderShellReady(){
@@ -716,22 +788,19 @@
   // ============================================================
   // ELIGIBILITY LOGIC
   // ============================================================
-  function computeEligibility(){
-    // Group complete transactions per player_id, sorted ascending by time.
-    var txByPlayer = {};
-
+  // Builds a flat list of {pid, type, ts, addOwner, dropOwner, txid} events
+  // from one league's complete transactions, translating that league's own
+  // roster_ids into the stable owner (Sleeper user_id) via ownerByRosterFn -
+  // this is what lets us bridge two different leagues' roster numbering.
+  function buildOwnerEvents(txList, ownerByRosterFn){
+    var events = [];
     var statusCounts = {};
-    var completeTypeCounts = {};
-    allTransactions.forEach(function(tx){
+    txList.forEach(function(tx){
       var st = tx && tx.status;
       statusCounts[st] = (statusCounts[st] || 0) + 1;
     });
-    diagnostics.txRawCount = allTransactions.length;
-    diagnostics.statusCounts = statusCounts;
-
-    allTransactions.forEach(function(tx){
+    txList.forEach(function(tx){
       if (!tx || tx.status !== 'complete') return;
-      completeTypeCounts[tx.type] = (completeTypeCounts[tx.type] || 0) + 1;
       var ts = tx.status_updated || tx.created || 0;
       var adds = tx.adds || {};
       var drops = tx.drops || {};
@@ -740,17 +809,50 @@
       Object.keys(drops).forEach(function(pid){ playerIds[pid] = true; });
 
       Object.keys(playerIds).forEach(function(pid){
-        if (!txByPlayer[pid]) txByPlayer[pid] = [];
-        txByPlayer[pid].push({
+        var addRoster = (adds[pid] !== undefined && adds[pid] !== null) ? String(adds[pid]) : null;
+        var dropRoster = (drops[pid] !== undefined && drops[pid] !== null) ? String(drops[pid]) : null;
+        events.push({
+          pid: pid,
           type: tx.type,
           ts: ts,
-          addRoster: (adds[pid] !== undefined && adds[pid] !== null) ? String(adds[pid]) : null,
-          dropRoster: (drops[pid] !== undefined && drops[pid] !== null) ? String(drops[pid]) : null,
+          addOwner: addRoster ? ownerByRosterFn(addRoster) : null,
+          dropOwner: dropRoster ? ownerByRosterFn(dropRoster) : null,
           txid: tx.transaction_id
         });
       });
     });
+    return { events: events, statusCounts: statusCounts };
+  }
 
+  function computeEligibility(){
+    var ownerByCurrentRosterFn = function(rid){
+      var m = managersByRoster[rid];
+      return m ? String(m.user_id) : null;
+    };
+    var ownerByHistoryRosterFn = function(rid){
+      return ownerByHistoryRoster[rid] || null;
+    };
+
+    var curResult = buildOwnerEvents(currentTransactions, ownerByCurrentRosterFn);
+    var histResult = buildOwnerEvents(historyTransactions, ownerByHistoryRosterFn);
+
+    diagnostics.current = diagnostics.current || {};
+    diagnostics.current.statusCounts = curResult.statusCounts;
+    diagnostics.history = diagnostics.history || {};
+    diagnostics.history.statusCounts = histResult.statusCounts;
+
+    // History season's events are chronologically earlier, but timestamps
+    // alone already sort everything correctly once merged.
+    var allEvents = histResult.events.concat(curResult.events);
+
+    var completeTypeCounts = {};
+    allEvents.forEach(function(e){ completeTypeCounts[e.type] = (completeTypeCounts[e.type] || 0) + 1; });
+
+    var txByPlayer = {};
+    allEvents.forEach(function(e){
+      if (!txByPlayer[e.pid]) txByPlayer[e.pid] = [];
+      txByPlayer[e.pid].push(e);
+    });
     Object.keys(txByPlayer).forEach(function(pid){
       txByPlayer[pid].sort(function(a,b){ return a.ts - b.ts; });
     });
@@ -758,25 +860,27 @@
     var map = {};
 
     Object.keys(currentRosters).forEach(function(rosterId){
+      var ownerId = ownerByCurrentRosterFn(rosterId);
       var players = currentRosters[rosterId] || [];
       players.forEach(function(pid){
         var history = txByPlayer[pid] || [];
 
-        // Find most recent transaction where this player was added to THIS roster.
+        // Find most recent transaction where this player was added to
+        // a roster owned by the SAME manager who currently has them -
+        // spans both league-years since everything is owner-keyed.
         var addEvent = null;
         for (var i = history.length - 1; i >= 0; i--) {
-          if (history[i].addRoster === String(rosterId)) { addEvent = history[i]; break; }
+          if (ownerId && history[i].addOwner === ownerId) { addEvent = history[i]; break; }
         }
 
         var status, reason, edgeReason = null;
 
         if (!addEvent) {
           status = 'eligible';
-          reason = 'Drafted by this manager (no transaction history on this roster).';
+          reason = 'Drafted by this manager (no transaction history found).';
         } else if (addEvent.type === 'trade') {
           status = 'ineligible';
-          var fromMgr = managersByRoster[addEvent.dropRoster];
-          reason = 'Traded from ' + (fromMgr ? (fromMgr.team_name || fromMgr.display_name) : 'another manager') + '.';
+          reason = 'Traded from ' + managerDisplayByOwner(addEvent.dropOwner) + '.';
         } else if (addEvent.type === 'waiver') {
           status = 'eligible';
           reason = 'Picked up on waivers after being cut.';
@@ -792,21 +896,22 @@
           reason = 'Added via "' + addEvent.type + '" transaction.';
         }
 
-        // Edge case: this same roster traded the player away at some point
-        // before re-acquiring them via waiver/FA. Rule says eligible, but
+        // Edge case: this same manager had the player earlier, traded them
+        // away, then re-acquired via waiver/FA. Rule says eligible, but
         // flag for human sanity-check per league convention.
         if (status === 'eligible' && addEvent) {
           var tradedAwayBefore = history.some(function(h){
-            return h.type === 'trade' && h.dropRoster === String(rosterId) && h.ts < addEvent.ts;
+            return h.type === 'trade' && h.dropOwner === ownerId && h.ts < addEvent.ts;
           });
           if (tradedAwayBefore) {
-            edgeReason = 'This manager traded this player away earlier this season and later re-acquired them via waivers/free agency. Ruled eligible per league rule, but flagged for a sanity check.';
+            edgeReason = 'This manager traded this player away earlier and later re-acquired them via waivers/free agency. Ruled eligible per league rule, but flagged for a sanity check.';
           }
         }
 
         var tradeChain = history.filter(function(h){ return h.type === 'trade'; });
 
         map[pid] = {
+          ownerId: ownerId,
           rosterId: String(rosterId),
           status: status,
           reason: reason,
@@ -935,19 +1040,28 @@
     if (!el) return;
     var d = diagnostics || {};
     var lines = [];
-    lines.push('league_id: ' + esc(leagueId));
+    lines.push('current league_id: ' + esc(leagueId));
+    lines.push('history league_id: ' + esc(historyLeagueId || 'none') + ' (' + esc(d.historyLeagueSource || '?') + ')');
     lines.push('source: ' + (d.fromCache ? 'sessionStorage cache' : 'fresh fetch'));
-    lines.push('weeks fetched: ' + (d.txWeeksFetched != null ? d.txWeeksFetched : '?') +
-      ' &nbsp;weeks w/ data: ' + (d.txWeeksWithData != null ? d.txWeeksWithData : '?'));
-    if (d.txWeekErrors && d.txWeekErrors.length) {
-      lines.push('week fetch errors: ' + d.txWeekErrors.map(function(e){ return 'wk' + e.week; }).join(', '));
+
+    function leagueLines(tag, label){
+      var t = d[tag];
+      if (!t) { lines.push(label + ': not fetched'); return; }
+      lines.push(label + ' weeks fetched: ' + t.weeksFetched + ' &nbsp;weeks w/ data: ' + t.weeksWithData);
+      if (t.weekErrors && t.weekErrors.length) {
+        lines.push(label + ' fetch errors: ' + t.weekErrors.map(function(e){ return 'wk' + e.week; }).join(', '));
+      }
+      lines.push(label + ' raw transactions: ' + t.rawCount);
+      var sc = d[tag] && d[tag].statusCounts;
+      if (sc) {
+        lines.push(label + ' by status: ' + (Object.keys(sc).length ? Object.keys(sc).map(function(k){ return k + '=' + sc[k]; }).join(', ') : 'none'));
+      }
     }
-    lines.push('raw transactions loaded: ' + (d.txRawCount != null ? d.txRawCount : '?'));
-    if (d.statusCounts) {
-      lines.push('by status: ' + Object.keys(d.statusCounts).map(function(k){ return k + '=' + d.statusCounts[k]; }).join(', '));
-    }
+    leagueLines('current', 'current-season');
+    leagueLines('history', 'history-season');
+
     if (d.completeTypeCounts) {
-      lines.push('complete by type: ' + (Object.keys(d.completeTypeCounts).length
+      lines.push('complete by type (combined): ' + (Object.keys(d.completeTypeCounts).length
         ? Object.keys(d.completeTypeCounts).map(function(k){ return k + '=' + d.completeTypeCounts[k]; }).join(', ')
         : 'none'));
     }
@@ -1096,7 +1210,7 @@
       var info = playerInfo(pid);
       var e = eligibilityMap[pid];
       var chain = e.tradeChain;
-      var originalRoster = chain.length ? chain[0].dropRoster : null;
+      var originalOwner = chain.length ? chain[0].dropOwner : null;
       var currentRoster = e.rosterId;
 
       var dotClass = e.isEdge ? 'dot-gold' : (e.status === 'eligible' ? 'dot-green' : 'dot-red');
@@ -1113,7 +1227,7 @@
           '<span class="pill ' + pillClass + '"><span class="status-dot ' + dotClass + '" style="display:inline-block;width:7px;height:7px;margin-right:4px;vertical-align:middle;"></span>' + statusLabel + '</span>' +
         '</div>' +
         '<div class="trade-flow">' +
-          '<span class="mono">' + esc(originalRoster ? managerName(originalRoster) : '?') + '</span>' +
+          '<span class="mono">' + esc(originalOwner ? managerDisplayByOwner(originalOwner) : '?') + '</span>' +
           '<span class="arrow">&rarr;</span>' +
           '<span class="mono">' + esc(managerName(currentRoster)) + '</span>' +
           (chain.length > 1 ? '<span class="mono" style="color:#c2c9d9;">(' + chain.length + ' trades)</span>' : '') +
