@@ -235,14 +235,22 @@
   }
   .player-row:last-child{border-bottom:none;}
   .player-row:active{background:#f4f6fb;}
-  .log-chevron{
-    color:#c2c9d9;
-    font-size:18px;
-    align-self:center;
-    flex-shrink:0;
-    margin-left:auto;
-    padding-left:6px;
+  .log-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:3px;
+    font-family:'DM Mono',monospace;
+    font-size:10.5px;
+    font-weight:500;
+    color:#0f1f3d;
+    background:#eef1f8;
+    border:1px solid #d5dbe8;
+    border-radius:20px;
+    padding:4px 10px;
+    margin-top:7px;
+    white-space:nowrap;
   }
+  .player-row:active .log-btn, .trade-card:active .log-btn{background:#e3e7f0;}
   .pos-badge{
     font-family:'DM Mono',monospace;
     font-size:10px;
@@ -619,7 +627,7 @@
 
   // Bump this whenever eligibility logic changes, so a stale cached result
   // from an earlier (possibly buggy) run doesn't mask a fix on reload.
-  var CACHE_VERSION = 'v4';
+  var CACHE_VERSION = 'v5';
 
   // ============================================================
   // STATE
@@ -632,6 +640,8 @@
   var allPlayers = {};        // full NFL DB
   var currentTransactions = []; // this season's own transactions (usually empty right after rollover)
   var historyTransactions = []; // last season's transactions - the real source of truth for trades
+  var currentDraftPicks = [];   // raw picks from this league's draft(s)
+  var historyDraftPicks = [];   // raw picks from last season's draft(s)
   var ownerByHistoryRoster = {}; // last-season roster_id (string) -> owner user_id (string)
   var historyManagersByOwner = {}; // owner_id -> {display_name, team_name} fallback for managers no longer in the league
   var currentRosters = {};    // { roster_id: [player_ids] }
@@ -709,6 +719,29 @@
       };
       if (weekErrors.length) console.warn('Keeper Tracker: transaction fetch failures (' + tag + ')', weekErrors);
       return flat;
+    });
+  }
+
+  // Fetches every pick from every draft belonging to a league. Returns a
+  // flat array of raw pick objects (player_id, picked_by, roster_id,
+  // round, pick_no) - translated into owner-keyed events later.
+  function loadDraftPicks(lid, tag){
+    return fetchJSON(API + '/league/' + lid + '/drafts').catch(function(){ return []; }).then(function(drafts){
+      drafts = Array.isArray(drafts) ? drafts : [];
+      var draftIds = drafts.map(function(d){ return d.draft_id; }).filter(Boolean);
+      var promises = draftIds.map(function(draftId){
+        return fetchJSON(API + '/draft/' + draftId + '/picks').catch(function(){ return []; });
+      });
+      return Promise.all(promises).then(function(results){
+        var flat = [];
+        results.forEach(function(picks){
+          if (Array.isArray(picks)) flat = flat.concat(picks);
+        });
+        diagnostics[tag] = diagnostics[tag] || {};
+        diagnostics[tag].draftCount = draftIds.length;
+        diagnostics[tag].draftPickCount = flat.length;
+        return flat;
+      });
     });
   }
 
@@ -812,20 +845,30 @@
       diagnostics.historyLeagueSource = getHistoryLeagueIdFromUrl() ? 'url ?history= param'
         : (DEFAULT_HISTORY_LEAGUE_ID ? 'configured default' : (leagueMeta.previous_league_id ? 'auto-detected via previous_league_id' : 'none - no prior season found'));
 
-      var fetches = [ loadAllTransactions(lid, 'current') ];
+      // Named indices into `fetches` so adding/removing optional fetches
+      // (history league only) can't silently shift positional results.
+      var idx = {};
+      var fetches = [];
+      function addFetch(key, promise){ idx[key] = fetches.length; fetches.push(promise); }
+
+      addFetch('currentTx', loadAllTransactions(lid, 'current'));
+      addFetch('currentDraft', loadDraftPicks(lid, 'current'));
       if (historyLeagueId) {
-        fetches.push(fetchJSON(API + '/league/' + historyLeagueId).catch(function(){ return {}; }));
-        fetches.push(fetchJSON(API + '/league/' + historyLeagueId + '/users').catch(function(){ return []; }));
-        fetches.push(fetchJSON(API + '/league/' + historyLeagueId + '/rosters').catch(function(){ return []; }));
-        fetches.push(loadAllTransactions(historyLeagueId, 'history'));
+        addFetch('historyMeta', fetchJSON(API + '/league/' + historyLeagueId).catch(function(){ return {}; }));
+        addFetch('historyUsers', fetchJSON(API + '/league/' + historyLeagueId + '/users').catch(function(){ return []; }));
+        addFetch('historyRosters', fetchJSON(API + '/league/' + historyLeagueId + '/rosters').catch(function(){ return []; }));
+        addFetch('historyTx', loadAllTransactions(historyLeagueId, 'history'));
+        addFetch('historyDraft', loadDraftPicks(historyLeagueId, 'history'));
       }
 
       return Promise.all(fetches).then(function(res){
-        currentTransactions = res[0] || [];
-        historyLeagueMeta = historyLeagueId ? (res[1] || {}) : {};
-        var historyUsers = historyLeagueId ? (res[2] || []) : [];
-        var historyRosters = historyLeagueId ? (res[3] || []) : [];
-        historyTransactions = historyLeagueId ? (res[4] || []) : [];
+        currentTransactions = res[idx.currentTx] || [];
+        currentDraftPicks = res[idx.currentDraft] || [];
+        historyLeagueMeta = historyLeagueId ? (res[idx.historyMeta] || {}) : {};
+        var historyUsers = historyLeagueId ? (res[idx.historyUsers] || []) : [];
+        var historyRosters = historyLeagueId ? (res[idx.historyRosters] || []) : [];
+        historyTransactions = historyLeagueId ? (res[idx.historyTx] || []) : [];
+        historyDraftPicks = historyLeagueId ? (res[idx.historyDraft] || []) : [];
 
         var historyUsersById = {};
         historyUsers.forEach(function(u){ historyUsersById[u.user_id] = u; });
@@ -957,6 +1000,31 @@
     return { events: events, statusCounts: statusCounts };
   }
 
+  // Draft picks aren't "transactions" in Sleeper's API, but they're the
+  // true origin event for most rostered players. Synthesize them into the
+  // same {pid, type, ts, addOwner, ...} shape so they flow through the
+  // same eligibility walk and the same transaction log.
+  function buildDraftEvents(picks, ownerByRosterFn, seasonLabel){
+    var events = [];
+    (picks || []).forEach(function(p){
+      if (!p || !p.player_id) return;
+      var ownerId = p.picked_by ? String(p.picked_by) : (p.roster_id != null ? ownerByRosterFn(String(p.roster_id)) : null);
+      if (!ownerId) return;
+      events.push({
+        pid: String(p.player_id),
+        type: 'draft',
+        ts: 0, // always earlier than any real transaction timestamp
+        addOwner: ownerId,
+        dropOwner: null,
+        txid: 'draft-' + p.draft_id + '-' + p.pick_no,
+        season: seasonLabel,
+        round: p.round,
+        pickNo: p.pick_no
+      });
+    });
+    return events;
+  }
+
   function computeEligibility(){
     var ownerByCurrentRosterFn = function(rid){
       var m = managersByRoster[rid];
@@ -974,9 +1042,15 @@
     diagnostics.history = diagnostics.history || {};
     diagnostics.history.statusCounts = histResult.statusCounts;
 
+    var curDraftEvents = buildDraftEvents(currentDraftPicks, ownerByCurrentRosterFn, leagueMeta.season || 'current');
+    var histDraftEvents = buildDraftEvents(historyDraftPicks, ownerByHistoryRosterFn, historyLeagueMeta.season || 'previous');
+    diagnostics.current.draftEventCount = curDraftEvents.length;
+    diagnostics.history.draftEventCount = histDraftEvents.length;
+
     // History season's events are chronologically earlier, but timestamps
-    // alone already sort everything correctly once merged.
-    var allEvents = histResult.events.concat(curResult.events);
+    // alone already sort everything correctly once merged. Draft events
+    // use ts=0 so they always sort before any real transaction.
+    var allEvents = histDraftEvents.concat(curDraftEvents, histResult.events, curResult.events);
 
     var completeTypeCounts = {};
     allEvents.forEach(function(e){ completeTypeCounts[e.type] = (completeTypeCounts[e.type] || 0) + 1; });
@@ -1010,7 +1084,10 @@
 
         if (!addEvent) {
           status = 'eligible';
-          reason = 'Drafted by this manager (no transaction history found).';
+          reason = 'On this roster since before available draft/transaction records.';
+        } else if (addEvent.type === 'draft') {
+          status = 'eligible';
+          reason = 'Drafted by this manager' + (addEvent.round != null && addEvent.pickNo != null ? ' — Round ' + addEvent.round + ', Pick ' + addEvent.pickNo : '') + '.';
         } else if (addEvent.type === 'trade') {
           status = 'ineligible';
           reason = 'Traded from ' + managerDisplayByOwner(addEvent.dropOwner) + '.';
@@ -1128,6 +1205,11 @@
     var fromName = e.dropOwner ? managerDisplayByOwner(e.dropOwner) : null;
     var toName = e.addOwner ? managerDisplayByOwner(e.addOwner) : null;
 
+    if (e.type === 'draft') {
+      var pickInfo = (e.round != null && e.pickNo != null) ? (' — Round ' + e.round + ', Pick ' + e.pickNo) : '';
+      if (toName) return 'Drafted by ' + toName + pickInfo + '.';
+      return 'Drafted' + pickInfo + '.';
+    }
     if (e.type === 'trade') {
       if (fromName && toName) return 'Traded from ' + fromName + ' to ' + toName + '.';
       if (toName) return 'Traded to ' + toName + '.';
@@ -1162,7 +1244,7 @@
 
     var body = $('sheetBody');
     if (!history.length) {
-      body.innerHTML = '<div class="log-empty">No recorded transactions for this player. Has been with this manager since the draft.</div>';
+      body.innerHTML = '<div class="log-empty">No recorded draft pick or transactions for this player within the seasons this tool tracks. Likely been on this roster since before that window.</div>';
     } else {
       var html = '';
       history.forEach(function(ev){
@@ -1283,6 +1365,9 @@
       if (sc) {
         lines.push(label + ' by status: ' + (Object.keys(sc).length ? Object.keys(sc).map(function(k){ return k + '=' + sc[k]; }).join(', ') : 'none'));
       }
+      if (t.draftCount != null) {
+        lines.push(label + ' drafts: ' + t.draftCount + ' &nbsp;draft picks: ' + t.draftPickCount + ' &nbsp;draft events used: ' + (t.draftEventCount != null ? t.draftEventCount : '?'));
+      }
     }
     leagueLines('current', 'current-season');
     leagueLines('history', 'history-season');
@@ -1383,8 +1468,8 @@
             '<div class="player-meta">' + esc(info.team) + '</div>' +
             (showReason ? '<div class="player-reason">' + esc(e.reason || '') + '</div>' : '') +
             (e.edgeReason ? '<div class="player-reason" style="color:#d4900a;">' + esc(e.edgeReason) + '</div>' : '') +
+            '<div class="log-btn">See transaction history &#8250;</div>' +
           '</div>' +
-          '<span class="log-chevron">&#8250;</span>' +
         '</div>';
       });
       out += '</div>';
@@ -1462,6 +1547,7 @@
           (chain.length > 1 ? '<span class="mono" style="color:#c2c9d9;">(' + chain.length + ' trades)</span>' : '') +
         '</div>' +
         (e.edgeReason ? '<div class="player-reason" style="color:#d4900a;margin-top:6px;">' + esc(e.edgeReason) + '</div>' : '') +
+        '<div class="log-btn">See transaction history &#8250;</div>' +
       '</div>';
     });
 
