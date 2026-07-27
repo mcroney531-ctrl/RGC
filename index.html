@@ -1140,10 +1140,15 @@
   // ============================================================
   boot();
 
+  // This app is always-live data (Sleeper API) with no offline use case,
+  // and an earlier service worker here caused a stale-cache bug where
+  // deploys never reached returning visitors. Not registering one going
+  // forward. sw.js is kept in place, self-destructing, purely to clean up
+  // browsers that already installed the old version.
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function(){
-      navigator.serviceWorker.register('sw.js').catch(function(){ /* optional, ignore failure */ });
-    });
+    navigator.serviceWorker.getRegistrations().then(function(regs){
+      regs.forEach(function(reg){ reg.update(); });
+    }).catch(function(){});
   }
 
 })();
