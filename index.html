@@ -231,8 +231,18 @@
     gap:10px;
     padding:10px 0;
     border-bottom:1px solid #eef0f6;
+    cursor:pointer;
   }
   .player-row:last-child{border-bottom:none;}
+  .player-row:active{background:#f4f6fb;}
+  .log-chevron{
+    color:#c2c9d9;
+    font-size:18px;
+    align-self:center;
+    flex-shrink:0;
+    margin-left:auto;
+    padding-left:6px;
+  }
   .pos-badge{
     font-family:'DM Mono',monospace;
     font-size:10px;
@@ -326,7 +336,9 @@
     box-shadow:0 3px 0 rgba(15,31,61,0.12);
     padding:12px 14px;
     margin-bottom:10px;
+    cursor:pointer;
   }
+  .trade-card:active{background:#f4f6fb;}
   .trade-flow{
     display:flex;
     align-items:center;
@@ -378,6 +390,108 @@
   .league-select-wrap{padding:16px 4px 4px;}
 
   ::-webkit-scrollbar{display:none;}
+
+  /* ---------- Player log bottom sheet ---------- */
+  .sheet-backdrop{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(15,31,61,0.45);
+    z-index:40;
+  }
+  .sheet-backdrop.open{display:block;}
+  .sheet{
+    display:none;
+    position:fixed;
+    left:50%;
+    bottom:0;
+    transform:translateX(-50%);
+    width:100%;
+    max-width:430px;
+    max-height:80vh;
+    background:#ffffff;
+    border-radius:18px 18px 0 0;
+    z-index:41;
+    box-shadow:0 -4px 0 rgba(15,31,61,0.12);
+    display:none;
+    flex-direction:column;
+  }
+  .sheet.open{display:flex;}
+  .sheet-handle{
+    width:36px;height:4px;border-radius:3px;
+    background:#cdd4e3;
+    margin:10px auto 4px;
+    flex-shrink:0;
+  }
+  .sheet-head{
+    padding:6px 16px 12px;
+    border-bottom:1px solid #eef0f6;
+    flex-shrink:0;
+  }
+  .sheet-head-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .sheet-close{
+    background:#f4f6fb;
+    border:none;
+    color:#0f1f3d;
+    width:28px;height:28px;
+    border-radius:50%;
+    font-size:16px;
+    line-height:1;
+    cursor:pointer;
+    flex-shrink:0;
+    margin-left:auto;
+  }
+  .sheet-title{font-size:21px;}
+  .sheet-sub{
+    font-family:'DM Mono',monospace;
+    font-size:11px;
+    color:#8892a6;
+    margin-top:2px;
+  }
+  .sheet-body{
+    overflow-y:auto;
+    padding:8px 16px 24px;
+  }
+  .log-entry{
+    display:flex;
+    gap:10px;
+    padding:11px 0;
+    border-bottom:1px solid #eef0f6;
+  }
+  .log-entry:last-child{border-bottom:none;}
+  .log-dot-col{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding-top:4px;
+    flex-shrink:0;
+  }
+  .log-dot{
+    width:9px;height:9px;border-radius:50%;
+    background:#0f1f3d;
+    flex-shrink:0;
+  }
+  .log-desc{
+    font-size:13.5px;
+    line-height:1.4;
+    color:#1c2438;
+  }
+  .log-meta{
+    font-family:'DM Mono',monospace;
+    font-size:10.5px;
+    color:#8892a6;
+    margin-top:3px;
+  }
+  .log-empty{
+    text-align:center;
+    padding:24px 12px;
+    color:#8892a6;
+    font-size:13.5px;
+  }
 </style>
 </head>
 <body>
@@ -463,6 +577,21 @@
     </button>
   </div>
 
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+  <div class="sheet" id="playerLogSheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div class="sheet-head-row">
+        <div>
+          <h2 class="sheet-title" id="sheetPlayerName">Player</h2>
+          <div class="sheet-sub" id="sheetPlayerMeta"></div>
+        </div>
+        <button class="sheet-close" id="sheetCloseBtn" aria-label="Close">&#10005;</button>
+      </div>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+
 </div>
 
 <script>
@@ -490,7 +619,7 @@
 
   // Bump this whenever eligibility logic changes, so a stale cached result
   // from an earlier (possibly buggy) run doesn't mask a fix on reload.
-  var CACHE_VERSION = 'v3';
+  var CACHE_VERSION = 'v4';
 
   // ============================================================
   // STATE
@@ -498,6 +627,7 @@
   var leagueId = '';
   var leagueMeta = {};
   var historyLeagueId = '';
+  var historyLeagueMeta = {};
   var managers = [];          // [{user_id, roster_id, display_name, team_name, avatar}] - current league
   var allPlayers = {};        // full NFL DB
   var currentTransactions = []; // this season's own transactions (usually empty right after rollover)
@@ -684,6 +814,7 @@
 
       var fetches = [ loadAllTransactions(lid, 'current') ];
       if (historyLeagueId) {
+        fetches.push(fetchJSON(API + '/league/' + historyLeagueId).catch(function(){ return {}; }));
         fetches.push(fetchJSON(API + '/league/' + historyLeagueId + '/users').catch(function(){ return []; }));
         fetches.push(fetchJSON(API + '/league/' + historyLeagueId + '/rosters').catch(function(){ return []; }));
         fetches.push(loadAllTransactions(historyLeagueId, 'history'));
@@ -691,9 +822,10 @@
 
       return Promise.all(fetches).then(function(res){
         currentTransactions = res[0] || [];
-        var historyUsers = historyLeagueId ? (res[1] || []) : [];
-        var historyRosters = historyLeagueId ? (res[2] || []) : [];
-        historyTransactions = historyLeagueId ? (res[3] || []) : [];
+        historyLeagueMeta = historyLeagueId ? (res[1] || {}) : {};
+        var historyUsers = historyLeagueId ? (res[2] || []) : [];
+        var historyRosters = historyLeagueId ? (res[3] || []) : [];
+        historyTransactions = historyLeagueId ? (res[4] || []) : [];
 
         var historyUsersById = {};
         historyUsers.forEach(function(u){ historyUsersById[u.user_id] = u; });
@@ -792,7 +924,7 @@
   // from one league's complete transactions, translating that league's own
   // roster_ids into the stable owner (Sleeper user_id) via ownerByRosterFn -
   // this is what lets us bridge two different leagues' roster numbering.
-  function buildOwnerEvents(txList, ownerByRosterFn){
+  function buildOwnerEvents(txList, ownerByRosterFn, seasonLabel){
     var events = [];
     var statusCounts = {};
     txList.forEach(function(tx){
@@ -817,7 +949,8 @@
           ts: ts,
           addOwner: addRoster ? ownerByRosterFn(addRoster) : null,
           dropOwner: dropRoster ? ownerByRosterFn(dropRoster) : null,
-          txid: tx.transaction_id
+          txid: tx.transaction_id,
+          season: seasonLabel
         });
       });
     });
@@ -833,8 +966,8 @@
       return ownerByHistoryRoster[rid] || null;
     };
 
-    var curResult = buildOwnerEvents(currentTransactions, ownerByCurrentRosterFn);
-    var histResult = buildOwnerEvents(historyTransactions, ownerByHistoryRosterFn);
+    var curResult = buildOwnerEvents(currentTransactions, ownerByCurrentRosterFn, leagueMeta.season || 'current');
+    var histResult = buildOwnerEvents(historyTransactions, ownerByHistoryRosterFn, historyLeagueMeta.season || 'previous');
 
     diagnostics.current = diagnostics.current || {};
     diagnostics.current.statusCounts = curResult.statusCounts;
@@ -918,7 +1051,8 @@
           edgeReason: edgeReason,
           isEdge: !!edgeReason,
           addEvent: addEvent,
-          tradeChain: tradeChain
+          tradeChain: tradeChain,
+          fullHistory: history
         };
       });
     });
@@ -970,6 +1104,99 @@
     }
     var initials = (m.team_name || m.display_name || '?').trim().slice(0,2).toUpperCase();
     return '<div class="avatar">' + esc(initials) + '</div>';
+  }
+
+  // ============================================================
+  // PLAYER TRANSACTION LOG
+  // ============================================================
+  function tsToDate(ts){
+    if (!ts) return null;
+    // Sleeper's timestamp scale has varied by field; treat anything
+    // smaller than ~1e12 as seconds and scale it up to milliseconds.
+    var ms = ts > 1e12 ? ts : ts * 1000;
+    var d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function formatDate(ts){
+    var d = tsToDate(ts);
+    if (!d) return 'unknown date';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function describeEvent(e){
+    var fromName = e.dropOwner ? managerDisplayByOwner(e.dropOwner) : null;
+    var toName = e.addOwner ? managerDisplayByOwner(e.addOwner) : null;
+
+    if (e.type === 'trade') {
+      if (fromName && toName) return 'Traded from ' + fromName + ' to ' + toName + '.';
+      if (toName) return 'Traded to ' + toName + '.';
+      if (fromName) return 'Traded away by ' + fromName + '.';
+      return 'Traded.';
+    }
+    if (e.type === 'waiver') {
+      if (toName) return 'Picked up off waivers by ' + toName + '.';
+      if (fromName) return 'Dropped by ' + fromName + ' (waivers).';
+      return 'Waiver move.';
+    }
+    if (e.type === 'free_agent') {
+      if (toName) return 'Picked up as a free agent by ' + toName + '.';
+      if (fromName) return 'Dropped by ' + fromName + '.';
+      return 'Free agent move.';
+    }
+    if (toName && fromName) return 'Moved from ' + fromName + ' to ' + toName + ' (' + e.type + ').';
+    if (toName) return 'Added by ' + toName + ' (' + e.type + ').';
+    if (fromName) return 'Dropped by ' + fromName + ' (' + e.type + ').';
+    return 'Transaction (' + (e.type || 'unknown') + ').';
+  }
+
+  function openPlayerLog(pid){
+    var info = playerInfo(pid);
+    var e = eligibilityMap[pid];
+
+    $('sheetPlayerName').textContent = info.name;
+    $('sheetPlayerMeta').textContent = info.pos + ' • ' + info.team;
+
+    var history = (e && e.fullHistory) ? e.fullHistory.slice() : [];
+    history.sort(function(a,b){ return b.ts - a.ts; }); // newest first
+
+    var body = $('sheetBody');
+    if (!history.length) {
+      body.innerHTML = '<div class="log-empty">No recorded transactions for this player. Has been with this manager since the draft.</div>';
+    } else {
+      var html = '';
+      history.forEach(function(ev){
+        html += '<div class="log-entry">' +
+          '<div class="log-dot-col"><span class="log-dot"></span></div>' +
+          '<div>' +
+            '<div class="log-desc">' + esc(describeEvent(ev)) + '</div>' +
+            '<div class="log-meta">' + esc(formatDate(ev.ts)) + ' &nbsp;·&nbsp; ' + esc(ev.season || '') + ' season &nbsp;·&nbsp; ' + esc(ev.type || '') + '</div>' +
+          '</div>' +
+        '</div>';
+      });
+      body.innerHTML = html;
+    }
+
+    $('sheetBackdrop').classList.add('open');
+    $('playerLogSheet').classList.add('open');
+  }
+
+  function closePlayerLog(){
+    $('sheetBackdrop').classList.remove('open');
+    $('playerLogSheet').classList.remove('open');
+  }
+
+  $('sheetBackdrop').addEventListener('click', closePlayerLog);
+  $('sheetCloseBtn').addEventListener('click', closePlayerLog);
+
+  function wirePlayerRowClicks(containerId){
+    var container = $(containerId);
+    if (!container) return;
+    Array.prototype.forEach.call(container.querySelectorAll('[data-pid]'), function(el){
+      el.addEventListener('click', function(){
+        openPlayerLog(el.getAttribute('data-pid'));
+      });
+    });
   }
 
   // ============================================================
@@ -1149,7 +1376,7 @@
       list.forEach(function(pid, idx){
         var info = playerInfo(pid);
         var e = eligibilityMap[pid] || {};
-        out += '<div class="player-row">' +
+        out += '<div class="player-row" data-pid="' + esc(pid) + '">' +
           '<div class="pos-badge">' + esc(info.pos) + '</div>' +
           '<div class="player-info">' +
             '<div class="player-name">' + esc(info.name) + '</div>' +
@@ -1157,6 +1384,7 @@
             (showReason ? '<div class="player-reason">' + esc(e.reason || '') + '</div>' : '') +
             (e.edgeReason ? '<div class="player-reason" style="color:#d4900a;">' + esc(e.edgeReason) + '</div>' : '') +
           '</div>' +
+          '<span class="log-chevron">&#8250;</span>' +
         '</div>';
       });
       out += '</div>';
@@ -1169,6 +1397,7 @@
     html += renderGroup('Edge Case — Needs Review', 'dot-gold', groups.edge, true);
 
     $('managerContent').innerHTML = html;
+    wirePlayerRowClicks('managerContent');
   }
 
   function renderTraded(){
@@ -1217,7 +1446,7 @@
       var pillClass = e.isEdge ? 'pill-gold' : (e.status === 'eligible' ? 'pill-green' : 'pill-red');
       var statusLabel = e.isEdge ? 'Edge Case' : (e.status === 'eligible' ? 'Eligible' : 'Not Eligible');
 
-      html += '<div class="trade-card">' +
+      html += '<div class="trade-card" data-pid="' + esc(pid) + '">' +
         '<div class="player-row" style="border:none;padding:0;">' +
           '<div class="pos-badge">' + esc(info.pos) + '</div>' +
           '<div class="player-info">' +
@@ -1238,6 +1467,7 @@
 
     $('tradedContent').innerHTML = html;
     wireTradedFilters();
+    wirePlayerRowClicks('tradedContent');
   }
 
   function wireTradedFilters(){
