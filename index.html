@@ -397,6 +397,110 @@
 
   .league-select-wrap{padding:16px 4px 4px;}
 
+  /* ---------- Keeper Picks screen ---------- */
+  .pill-neutral{background:rgba(102,112,138,0.12);color:#66708a;}
+  .status-banner{
+    border-radius:12px;
+    padding:14px 16px;
+    margin-bottom:16px;
+    border:1px solid #e3e7f0;
+  }
+  .status-banner.st-pending{background:rgba(212,144,10,0.08);border-color:rgba(212,144,10,0.3);}
+  .status-banner.st-approved{background:rgba(14,168,107,0.08);border-color:rgba(14,168,107,0.3);}
+  .status-banner.st-rejected{background:rgba(224,48,64,0.08);border-color:rgba(224,48,64,0.3);}
+  .status-banner.st-none{background:#f4f6fb;}
+  .status-banner-title{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:18px;
+    margin-bottom:2px;
+  }
+  .status-banner p{
+    font-size:12.5px;
+    color:#33394a;
+    margin:2px 0 0;
+    line-height:1.4;
+  }
+  .switch-manager-link{
+    font-family:'DM Mono',monospace;
+    font-size:11.5px;
+    color:#66708a;
+    text-decoration:underline;
+    background:none;
+    border:none;
+    padding:0;
+    cursor:pointer;
+    margin-top:8px;
+  }
+  .pick-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 0;
+    border-bottom:1px solid #eef0f6;
+  }
+  .pick-row:last-child{border-bottom:none;}
+  .pick-checkbox{
+    width:22px;height:22px;
+    border-radius:50%;
+    border:2px solid #cdd4e3;
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:13px;
+    color:#ffffff;
+  }
+  .pick-row.selectable{cursor:pointer;}
+  .pick-row.selected .pick-checkbox{background:#0ea86b;border-color:#0ea86b;}
+  .pick-row.disabled{opacity:0.45;}
+  .pick-submit-wrap{
+    position:sticky;
+    bottom:60px;
+    padding:10px 0 4px;
+    background:linear-gradient(to top, #f4f6fb 70%, rgba(244,246,251,0));
+  }
+  .btn-block{display:block;width:100%;text-align:center;}
+  .btn:disabled{opacity:0.45;box-shadow:none;}
+  .deadline-note{
+    font-family:'DM Mono',monospace;
+    font-size:11px;
+    color:#8892a6;
+    margin-bottom:14px;
+  }
+
+  /* ---------- Admin screen ---------- */
+  .admin-banner{
+    background:#0f1f3d;
+    color:#fff;
+    padding:10px 14px;
+    border-radius:10px;
+    font-family:'DM Mono',monospace;
+    font-size:11.5px;
+    margin-bottom:16px;
+  }
+  .admin-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:12px 0;
+    border-bottom:1px solid #eef0f6;
+  }
+  .admin-row:last-child{border-bottom:none;}
+  .admin-row-info{flex:1;min-width:0;}
+  .admin-row-name{font-family:'Bebas Neue',sans-serif;font-size:17px;}
+  .admin-row-picks{font-size:12.5px;color:#33394a;margin-top:2px;}
+  .admin-actions{display:flex;gap:6px;flex-shrink:0;}
+  .btn-sm{
+    font-family:'DM Mono',monospace;
+    font-size:11px;
+    padding:7px 12px;
+    border-radius:8px;
+    border:none;
+    cursor:pointer;
+  }
+  .btn-approve{background:#0ea86b;color:#fff;}
+  .btn-reject{background:#e03040;color:#fff;}
+
   ::-webkit-scrollbar{display:none;}
 
   /* ---------- Player log bottom sheet ---------- */
@@ -532,6 +636,16 @@
     <div id="tradedContent"></div>
   </div>
 
+  <!-- SCREEN: Keeper Picks -->
+  <div class="screen hidden" id="screen-picks">
+    <div id="picksContent"></div>
+  </div>
+
+  <!-- SCREEN: Admin (only reachable via ?admin=TOKEN) -->
+  <div class="screen hidden" id="screen-admin">
+    <div id="adminContent"></div>
+  </div>
+
   <!-- SCREEN 4: About -->
   <div class="screen hidden" id="screen-about">
     <div class="about-block">
@@ -578,6 +692,10 @@
     <button class="tab-btn" data-tab="traded">
       <span class="tab-icon">&#128257;</span>
       <span class="tab-label">Traded</span>
+    </button>
+    <button class="tab-btn" data-tab="picks">
+      <span class="tab-icon">&#127942;</span>
+      <span class="tab-label">Picks</span>
     </button>
     <button class="tab-btn" data-tab="about">
       <span class="tab-icon">&#8505;</span>
@@ -653,6 +771,15 @@
   var currentManagerRosterId = null;
   var tradedFilter = 'all';
   var diagnostics = {};       // debug counters, shown on the About screen
+
+  // Keeper picks (backend-backed, via Netlify Functions + Blobs)
+  var adminToken = new URLSearchParams(window.location.search).get('admin') || ''; // gates admin actions server-side
+  var picksData = null;       // { leagueId, deadline, picks: { ownerId: {...} } }
+  var myOwnerId = '';         // which manager this device has identified as (localStorage)
+  var pendingSelection = [];  // player_ids currently checked in the picker, pre-submit
+  var selectionSeededFor = null;
+  var picksSubmitError = '';
+  var adminError = '';
 
   // ============================================================
   // DOM HELPERS
@@ -758,6 +885,41 @@
     return params.get('history') || '';
   }
 
+  function isAdminMode(){ return !!adminToken; }
+
+  // ============================================================
+  // KEEPER PICKS API
+  // ============================================================
+  function apiRequest(path, options){
+    return fetch(path, options).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(data){
+        if (!r.ok) throw new Error(data.error || ('Request failed (HTTP ' + r.status + ')'));
+        return data;
+      });
+    });
+  }
+  function apiGet(path){ return apiRequest(path); }
+  function apiPost(path, body){
+    return apiRequest(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  }
+
+  function loadPicksData(){
+    apiGet('/api/keeper-picks-get?league=' + encodeURIComponent(leagueId))
+      .then(function(data){
+        picksData = data;
+        if (currentTab === 'picks' && !currentManagerRosterId) renderPicks();
+        if (currentTab === 'admin' && !currentManagerRosterId) renderAdmin();
+      })
+      .catch(function(err){
+        console.warn('Keeper Tracker: could not load keeper picks', err);
+        if (!picksData) picksData = { leagueId: leagueId, deadline: null, picks: {} };
+      });
+  }
+
   function boot(){
     leagueId = getLeagueIdFromUrl() || DEFAULT_LEAGUE_ID;
 
@@ -783,6 +945,7 @@
         rebuildManagersByRoster();
         renderShellReady();
         render();
+        loadPicksData();
         return;
       } catch(e){ /* fall through to fresh load */ }
     }
@@ -903,6 +1066,7 @@
 
         renderShellReady();
         render();
+        loadPicksData();
       });
     }).catch(function(err){
       showError(err);
@@ -1306,13 +1470,21 @@
     setTab(btn.getAttribute('data-tab'));
   });
 
+  if (isAdminMode()) {
+    var adminTabBtn = document.createElement('button');
+    adminTabBtn.className = 'tab-btn';
+    adminTabBtn.setAttribute('data-tab', 'admin');
+    adminTabBtn.innerHTML = '<span class="tab-icon">&#128737;</span><span class="tab-label">Admin</span>';
+    $('tabbar').appendChild(adminTabBtn);
+  }
+
   $('backBtn').addEventListener('click', goBack);
 
   // ============================================================
   // RENDER
   // ============================================================
   function render(){
-    ['overview','manager','traded','about'].forEach(function(s){
+    ['overview','manager','traded','picks','admin','about'].forEach(function(s){
       $('screen-' + s).classList.add('hidden');
     });
 
@@ -1337,6 +1509,14 @@
       $('screen-traded').classList.remove('hidden');
       $('screenTitle').textContent = 'Traded Players';
       renderTraded();
+    } else if (currentTab === 'picks') {
+      $('screen-picks').classList.remove('hidden');
+      $('screenTitle').textContent = 'Keeper Picks';
+      renderPicks();
+    } else if (currentTab === 'admin') {
+      $('screen-admin').classList.remove('hidden');
+      $('screenTitle').textContent = 'Admin';
+      renderAdmin();
     } else if (currentTab === 'about') {
       $('screen-about').classList.remove('hidden');
       $('screenTitle').textContent = 'About';
@@ -1384,6 +1564,339 @@
 
   var refreshBtn = $('forceRefreshBtn');
   if (refreshBtn) refreshBtn.addEventListener('click', forceRefresh);
+
+  // ============================================================
+  // KEEPER PICKS SCREEN
+  // ============================================================
+  function formatDeadline(iso){
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function deadlineToInputValue(iso){
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var pad = function(n){ return String(n).length < 2 ? '0' + n : String(n); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function isDeadlinePassed(){
+    return !!(picksData && picksData.deadline && Date.now() > Date.parse(picksData.deadline));
+  }
+
+  function managerPickerHtml(){
+    var html = '<div class="section-head"><h2>Who Are You?</h2></div>' +
+      '<p style="font-size:13px;color:#66708a;margin:-6px 0 14px;">Pick your team to submit or view your keeper picks. Remembered on this device only - no login.</p>';
+    managers.forEach(function(m){
+      html += '<div class="card manager-card" data-owner="' + esc(m.user_id) + '">' +
+        avatarHtml(m) +
+        '<div class="manager-info">' +
+          '<div class="manager-name">' + esc(m.team_name || m.display_name) + '</div>' +
+          '<div class="team-name">' + esc(m.display_name) + '</div>' +
+        '</div>' +
+        '<span class="chevron">&#8250;</span>' +
+      '</div>';
+    });
+    return html;
+  }
+
+  function ensureSelectionSeeded(){
+    if (selectionSeededFor === myOwnerId) return;
+    var entry = picksData && picksData.picks ? picksData.picks[myOwnerId] : null;
+    pendingSelection = entry ? entry.playerIds.slice() : [];
+    selectionSeededFor = myOwnerId;
+  }
+
+  function myPicksFormHtml(){
+    ensureSelectionSeeded();
+    var m = managersByOwner[myOwnerId];
+    var rosterId = m.roster_id;
+    var entry = picksData.picks[myOwnerId];
+    var deadlinePassed = isDeadlinePassed();
+
+    var players = (currentRosters[rosterId] || []).slice();
+    var groups = { eligible: [], ineligible: [], edge: [] };
+    players.forEach(function(pid){
+      var e = eligibilityMap[pid];
+      if (!e) { groups.eligible.push(pid); return; }
+      if (e.isEdge) groups.edge.push(pid);
+      else if (e.status === 'eligible') groups.eligible.push(pid);
+      else groups.ineligible.push(pid);
+    });
+    groups.eligible.sort(posSort);
+    groups.edge.sort(posSort);
+    groups.ineligible.sort(posSort);
+
+    var status = entry ? entry.status : 'none';
+    var bannerTitle, bannerBody;
+    if (status === 'approved') { bannerTitle = 'Approved'; bannerBody = 'Your keeper picks are locked in.'; }
+    else if (status === 'pending') { bannerTitle = 'Pending Approval'; bannerBody = 'Submitted - waiting on the commissioner to confirm it’s really you.'; }
+    else if (status === 'rejected') { bannerTitle = 'Rejected'; bannerBody = 'Your last submission was rejected. Adjust and resubmit.'; }
+    else { bannerTitle = 'No Picks Submitted Yet'; bannerBody = 'Select up to 2 players below, then submit.'; }
+
+    var html = '<div class="status-banner st-' + status + '">' +
+      '<div class="status-banner-title">' + esc(bannerTitle) + '</div>' +
+      '<p>' + esc(bannerBody) + '</p>' +
+    '</div>';
+
+    html += '<div class="section-head"><h2>' + esc(m.team_name || m.display_name) + '</h2></div>';
+
+    if (picksData.deadline) {
+      html += '<div class="deadline-note">Deadline: ' + esc(formatDeadline(picksData.deadline)) + (deadlinePassed ? ' — PASSED' : '') + '</div>';
+    }
+
+    function pickGroup(title, dotClass, list, selectable){
+      if (!list.length) return '';
+      var out = '<div class="section-head"><span class="section-dot ' + dotClass + '"></span><h2>' + title + '</h2></div>';
+      out += '<div class="card">';
+      list.forEach(function(pid){
+        var info = playerInfo(pid);
+        var e = eligibilityMap[pid] || {};
+        var isSelected = pendingSelection.indexOf(pid) !== -1;
+        var canSelect = selectable && !deadlinePassed;
+        out += '<div class="pick-row' + (canSelect ? ' selectable' : '') + (isSelected ? ' selected' : '') + (!selectable ? ' disabled' : '') + '"' + (canSelect ? ' data-pick="' + esc(pid) + '"' : '') + '>' +
+          '<div class="pick-checkbox">' + (isSelected ? '&#10003;' : '') + '</div>' +
+          '<div class="player-info">' +
+            '<div class="player-name">' + esc(info.name) + ' <span class="mono" style="font-size:10.5px;color:#8892a6;">' + esc(info.pos) + ' ' + esc(info.team) + '</span></div>' +
+            (!selectable ? '<div class="player-reason">' + esc(e.reason || '') + '</div>' : '') +
+          '</div>' +
+        '</div>';
+      });
+      out += '</div>';
+      return out;
+    }
+
+    html += pickGroup('Keeper-Eligible (tap to select, max 2)', 'dot-green', groups.eligible, true);
+    html += pickGroup('Edge Case (allowed - use judgement)', 'dot-gold', groups.edge, true);
+    html += pickGroup('Not Keeper-Eligible', 'dot-red', groups.ineligible, false);
+
+    html += '<div class="pick-submit-wrap">' +
+      '<button class="btn btn-block" id="submitPicksBtn"' + (deadlinePassed ? ' disabled' : '') + '>' +
+        (deadlinePassed ? 'Deadline Passed' : 'Submit Picks (' + pendingSelection.length + '/2)') +
+      '</button>' +
+      (picksSubmitError ? '<div class="player-reason" style="color:#e03040;margin-top:8px;">' + esc(picksSubmitError) + '</div>' : '') +
+    '</div>';
+
+    html += '<button class="switch-manager-link" id="switchManagerBtn">Not ' + esc(m.display_name) + '? Switch manager</button>';
+
+    return html;
+  }
+
+  function leaguePicksBoardHtml(){
+    var picks = (picksData && picksData.picks) || {};
+    var out = '<div class="section-head"><h2>League Keeper Picks</h2><span class="section-count mono">' + managers.length + '</span></div>';
+    out += '<div class="card">';
+    managers.forEach(function(m){
+      var entry = picks[String(m.user_id)];
+      var status = entry ? entry.status : 'none';
+      var pillClass = status === 'approved' ? 'pill-green' : status === 'pending' ? 'pill-gold' : status === 'rejected' ? 'pill-red' : 'pill-neutral';
+      var statusLabel = status === 'approved' ? 'Approved' : status === 'pending' ? 'Pending' : status === 'rejected' ? 'Rejected' : 'Not submitted';
+      var names = entry && entry.playerIds.length ? entry.playerIds.map(function(pid){ return playerInfo(pid).name; }).join(', ') : (entry ? 'Keeping nobody' : '—');
+      out += '<div class="admin-row">' +
+        '<div class="admin-row-info">' +
+          '<div class="admin-row-name">' + esc(m.team_name || m.display_name) + '</div>' +
+          '<div class="admin-row-picks">' + esc(names) + '</div>' +
+        '</div>' +
+        '<span class="pill ' + pillClass + '">' + statusLabel + '</span>' +
+      '</div>';
+    });
+    out += '</div>';
+    return out;
+  }
+
+  function renderPicks(){
+    var container = $('picksContent');
+    if (!managers.length) {
+      container.innerHTML = '<div class="state-block"><div class="spinner"></div><p>Loading...</p></div>';
+      return;
+    }
+
+    var storageKey = 'keeperTrackerManagerOwnerId_' + leagueId;
+    if (!myOwnerId) {
+      try { myOwnerId = localStorage.getItem(storageKey) || ''; } catch(e){}
+    }
+
+    var html = '';
+    if (!myOwnerId || !managersByOwner[myOwnerId]) {
+      html += managerPickerHtml();
+    } else if (!picksData) {
+      html += '<div class="state-block"><div class="spinner"></div><p>Loading keeper picks...</p></div>';
+    } else {
+      html += myPicksFormHtml();
+    }
+
+    if (picksData) html += leaguePicksBoardHtml();
+
+    container.innerHTML = html;
+
+    Array.prototype.forEach.call(container.querySelectorAll('[data-owner]'), function(card){
+      card.addEventListener('click', function(){
+        myOwnerId = card.getAttribute('data-owner');
+        try { localStorage.setItem(storageKey, myOwnerId); } catch(e){}
+        selectionSeededFor = null;
+        picksSubmitError = '';
+        renderPicks();
+      });
+    });
+
+    Array.prototype.forEach.call(container.querySelectorAll('[data-pick]'), function(row){
+      row.addEventListener('click', function(){
+        var pid = row.getAttribute('data-pick');
+        var i = pendingSelection.indexOf(pid);
+        if (i !== -1) {
+          pendingSelection.splice(i, 1);
+        } else {
+          if (pendingSelection.length >= 2) pendingSelection.shift();
+          pendingSelection.push(pid);
+        }
+        renderPicks();
+      });
+    });
+
+    var submitBtn = $('submitPicksBtn');
+    if (submitBtn) submitBtn.addEventListener('click', submitMyPicks);
+
+    var switchBtn = $('switchManagerBtn');
+    if (switchBtn) switchBtn.addEventListener('click', function(){
+      try { localStorage.removeItem(storageKey); } catch(e){}
+      myOwnerId = '';
+      selectionSeededFor = null;
+      picksSubmitError = '';
+      renderPicks();
+    });
+  }
+
+  function submitMyPicks(){
+    picksSubmitError = '';
+    var submitBtn = $('submitPicksBtn');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting...'; }
+    apiPost('/api/keeper-picks-submit', { leagueId: leagueId, ownerId: myOwnerId, playerIds: pendingSelection })
+      .then(function(entry){
+        if (!picksData) picksData = { leagueId: leagueId, deadline: null, picks: {} };
+        picksData.picks[myOwnerId] = entry;
+        renderPicks();
+      })
+      .catch(function(err){
+        picksSubmitError = err.message || 'Something went wrong submitting your picks.';
+        renderPicks();
+      });
+  }
+
+  // ============================================================
+  // ADMIN SCREEN
+  // ============================================================
+  function renderAdmin(){
+    var container = $('adminContent');
+    if (!managers.length) {
+      container.innerHTML = '<div class="state-block"><div class="spinner"></div><p>Loading...</p></div>';
+      return;
+    }
+
+    var html = '<div class="admin-banner">Admin mode — approve/reject keeper picks and set the deadline. This link is private, don’t share it.</div>';
+
+    html += '<div class="section-head"><h2>Deadline</h2></div>';
+    html += '<div class="card">' +
+      '<input class="text-input" id="deadlineInput" type="datetime-local" value="' + esc(deadlineToInputValue(picksData && picksData.deadline)) + '">' +
+      '<button class="btn" id="saveDeadlineBtn">Save Deadline</button> ' +
+      '<button class="btn" id="clearDeadlineBtn" style="background:#66708a;">Clear</button>' +
+      (adminError ? '<div class="player-reason" style="color:#e03040;margin-top:8px;">' + esc(adminError) + '</div>' : '') +
+    '</div>';
+
+    if (!picksData) {
+      html += '<div class="state-block"><div class="spinner"></div><p>Loading picks...</p></div>';
+      container.innerHTML = html;
+      wireAdminHandlers();
+      return;
+    }
+
+    var picks = picksData.picks || {};
+    var pending = [], approved = [], rejected = [], notSubmitted = [];
+    managers.forEach(function(m){
+      var entry = picks[String(m.user_id)];
+      if (!entry) { notSubmitted.push(m); return; }
+      if (entry.status === 'pending') pending.push(m);
+      else if (entry.status === 'approved') approved.push(m);
+      else rejected.push(m);
+    });
+
+    function adminGroup(title, list, showActions){
+      if (!list.length) return '';
+      var out = '<div class="section-head"><h2>' + esc(title) + '</h2><span class="section-count mono">' + list.length + '</span></div>';
+      out += '<div class="card">';
+      list.forEach(function(m){
+        var entry = picks[String(m.user_id)];
+        var names = entry && entry.playerIds.length ? entry.playerIds.map(function(pid){ return playerInfo(pid).name; }).join(', ') : (entry ? 'Keeping nobody' : 'No picks submitted');
+        out += '<div class="admin-row">' +
+          '<div class="admin-row-info">' +
+            '<div class="admin-row-name">' + esc(m.team_name || m.display_name) + '</div>' +
+            '<div class="admin-row-picks">' + esc(names) + '</div>' +
+          '</div>' +
+          (showActions ? (
+            '<div class="admin-actions">' +
+              '<button class="btn-sm btn-approve" data-approve="' + esc(m.user_id) + '">Approve</button>' +
+              '<button class="btn-sm btn-reject" data-reject="' + esc(m.user_id) + '">Reject</button>' +
+            '</div>'
+          ) : '') +
+        '</div>';
+      });
+      out += '</div>';
+      return out;
+    }
+
+    html += adminGroup('Pending Approval', pending, true);
+    html += adminGroup('Approved', approved, false);
+    html += adminGroup('Rejected', rejected, false);
+    html += adminGroup('Not Submitted Yet', notSubmitted, false);
+
+    container.innerHTML = html;
+    wireAdminHandlers();
+  }
+
+  function wireAdminHandlers(){
+    var container = $('adminContent');
+    var saveBtn = $('saveDeadlineBtn');
+    if (saveBtn) saveBtn.addEventListener('click', function(){ saveDeadline($('deadlineInput').value); });
+    var clearBtn = $('clearDeadlineBtn');
+    if (clearBtn) clearBtn.addEventListener('click', function(){ saveDeadline(''); });
+
+    Array.prototype.forEach.call(container.querySelectorAll('[data-approve]'), function(btn){
+      btn.addEventListener('click', function(){ reviewPick(btn.getAttribute('data-approve'), 'approve'); });
+    });
+    Array.prototype.forEach.call(container.querySelectorAll('[data-reject]'), function(btn){
+      btn.addEventListener('click', function(){ reviewPick(btn.getAttribute('data-reject'), 'reject'); });
+    });
+  }
+
+  function saveDeadline(inputValue){
+    adminError = '';
+    var iso = inputValue ? new Date(inputValue).toISOString() : null;
+    apiPost('/api/keeper-admin-settings', { leagueId: leagueId, adminToken: adminToken, deadline: iso })
+      .then(function(res){
+        if (!picksData) picksData = { leagueId: leagueId, deadline: null, picks: {} };
+        picksData.deadline = res.deadline;
+        renderAdmin();
+      })
+      .catch(function(err){
+        adminError = err.message || 'Could not save deadline.';
+        renderAdmin();
+      });
+  }
+
+  function reviewPick(ownerId, action){
+    adminError = '';
+    apiPost('/api/keeper-picks-review', { leagueId: leagueId, ownerId: ownerId, action: action, adminToken: adminToken })
+      .then(function(entry){
+        if (!picksData) picksData = { leagueId: leagueId, deadline: null, picks: {} };
+        picksData.picks[ownerId] = entry;
+        renderAdmin();
+      })
+      .catch(function(err){
+        adminError = err.message || 'Could not update that submission.';
+        renderAdmin();
+      });
+  }
 
   function renderOverview(){
     if (!managers.length) {

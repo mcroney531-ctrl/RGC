@@ -1,0 +1,8 @@
+{
+  "name": "keeper-tracker",
+  "private": true,
+  "description": "Backend functions for Keeper Tracker's keeper-picks feature (Netlify Functions + Netlify Blobs).",
+  "dependencies": {
+    "@netlify/blobs": "^10.7.10"
+  }
+}
