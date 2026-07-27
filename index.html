@@ -440,6 +440,11 @@
       <h3>Data Source</h3>
       <p>Everything is computed live, in your browser, from Sleeper's public API. No login, no accounts, no backend, no data stored anywhere except your browser's local session cache (to avoid re-downloading the ~10MB player database).</p>
     </div>
+    <div class="about-block">
+      <h3>Diagnostics</h3>
+      <div id="diagnosticsBlock" class="mono" style="font-size:12px;line-height:1.7;color:#33394a;background:#f4f6fb;border:1px solid #e3e7f0;border-radius:8px;padding:10px 12px;">loading...</div>
+      <button class="btn" id="forceRefreshBtn" style="margin-top:10px;">Force Refresh (clear cache &amp; re-fetch)</button>
+    </div>
   </div>
 
   <div class="tabbar" id="tabbar">
@@ -474,6 +479,10 @@
   var WEEKS = []; // 0 (preseason) through 18
   for (var w = 0; w <= 18; w++) WEEKS.push(w);
 
+  // Bump this whenever eligibility logic changes, so a stale cached result
+  // from an earlier (possibly buggy) run doesn't mask a fix on reload.
+  var CACHE_VERSION = 'v2';
+
   // ============================================================
   // STATE
   // ============================================================
@@ -489,6 +498,7 @@
   var currentTab = 'overview';
   var currentManagerRosterId = null;
   var tradedFilter = 'all';
+  var diagnostics = {};       // debug counters, shown on the About screen
 
   // ============================================================
   // DOM HELPERS
@@ -526,18 +536,31 @@
   }
 
   function loadAllTransactions(lid){
+    var weekErrors = [];
     var promises = WEEKS.map(function(week){
       return fetchJSON(API + '/league/' + lid + '/transactions/' + week)
-        .catch(function(){ return []; }); // empty/missing week -> just skip
+        .catch(function(err){
+          weekErrors.push({ week: week, error: String(err && err.message || err) });
+          return [];
+        });
     });
     return Promise.all(promises).then(function(results){
       var flat = [];
-      results.forEach(function(weekTx){
-        if (Array.isArray(weekTx)) flat = flat.concat(weekTx);
+      var weeksWithData = 0;
+      results.forEach(function(weekTx, idx){
+        if (Array.isArray(weekTx) && weekTx.length) {
+          weeksWithData++;
+          flat = flat.concat(weekTx);
+        }
       });
       flat.sort(function(a,b){
         return (a.status_updated || a.created || 0) - (b.status_updated || b.created || 0);
       });
+      diagnostics.txWeeksFetched = WEEKS.length;
+      diagnostics.txWeeksWithData = weeksWithData;
+      diagnostics.txWeekErrors = weekErrors;
+      diagnostics.txRawCount = flat.length;
+      if (weekErrors.length) console.warn('Keeper Tracker: transaction fetch failures', weekErrors);
       return flat;
     });
   }
@@ -558,7 +581,7 @@
       return;
     }
 
-    var sessionKey = 'keeperTrackerCache_' + leagueId;
+    var sessionKey = 'keeperTrackerCache_' + CACHE_VERSION + '_' + leagueId;
     var cached = null;
     try { cached = sessionStorage.getItem(sessionKey); } catch(e){}
     if (cached) {
@@ -568,6 +591,8 @@
         managers = parsed.managers;
         currentRosters = parsed.currentRosters;
         eligibilityMap = parsed.eligibilityMap;
+        diagnostics = parsed.diagnostics || {};
+        diagnostics.fromCache = true;
         rebuildManagersByRoster();
         renderShellReady();
         render();
@@ -578,8 +603,18 @@
     loadFresh(leagueId, sessionKey);
   }
 
+  function forceRefresh(){
+    try {
+      Object.keys(sessionStorage).forEach(function(k){
+        if (k.indexOf('keeperTrackerCache_') === 0) sessionStorage.removeItem(k);
+      });
+    } catch(e){}
+    window.location.reload();
+  }
+
   function loadFresh(lid, sessionKey){
     showLoading();
+    diagnostics = { fromCache: false };
 
     Promise.all([
       fetchJSON(API + '/league/' + lid),
@@ -628,6 +663,7 @@
           managers: managers,
           currentRosters: currentRosters,
           eligibilityMap: eligibilityMap,
+          diagnostics: diagnostics,
           ts: Date.now()
         }));
       } catch(e){ /* quota - ignore */ }
@@ -684,8 +720,18 @@
     // Group complete transactions per player_id, sorted ascending by time.
     var txByPlayer = {};
 
+    var statusCounts = {};
+    var completeTypeCounts = {};
+    allTransactions.forEach(function(tx){
+      var st = tx && tx.status;
+      statusCounts[st] = (statusCounts[st] || 0) + 1;
+    });
+    diagnostics.txRawCount = allTransactions.length;
+    diagnostics.statusCounts = statusCounts;
+
     allTransactions.forEach(function(tx){
       if (!tx || tx.status !== 'complete') return;
+      completeTypeCounts[tx.type] = (completeTypeCounts[tx.type] || 0) + 1;
       var ts = tx.status_updated || tx.created || 0;
       var adds = tx.adds || {};
       var drops = tx.drops || {};
@@ -734,9 +780,16 @@
         } else if (addEvent.type === 'waiver') {
           status = 'eligible';
           reason = 'Picked up on waivers after being cut.';
-        } else {
+        } else if (addEvent.type === 'free_agent') {
           status = 'eligible';
           reason = 'Picked up as a free agent after being cut.';
+        } else {
+          // e.g. a commissioner-made roster move, or a transaction type
+          // this tool doesn't explicitly recognize. Don't silently call
+          // it eligible - flag it so a human checks.
+          status = 'eligible';
+          edgeReason = 'Most recent roster move for this player was a "' + esc(addEvent.type) + '" transaction, not a standard trade/waiver/free-agent move. Flagged for manual review.';
+          reason = 'Added via "' + addEvent.type + '" transaction.';
         }
 
         // Edge case: this same roster traded the player away at some point
@@ -763,6 +816,17 @@
           tradeChain: tradeChain
         };
       });
+    });
+
+    diagnostics.completeTypeCounts = completeTypeCounts;
+    diagnostics.rosteredPlayerCount = Object.keys(map).length;
+    diagnostics.eligibleCount = 0;
+    diagnostics.ineligibleCount = 0;
+    diagnostics.edgeCount = 0;
+    Object.keys(map).forEach(function(pid){
+      if (map[pid].isEdge) diagnostics.edgeCount++;
+      else if (map[pid].status === 'eligible') diagnostics.eligibleCount++;
+      else diagnostics.ineligibleCount++;
     });
 
     return map;
@@ -862,8 +926,38 @@
     } else if (currentTab === 'about') {
       $('screen-about').classList.remove('hidden');
       $('screenTitle').textContent = 'About';
+      renderDiagnostics();
     }
   }
+
+  function renderDiagnostics(){
+    var el = $('diagnosticsBlock');
+    if (!el) return;
+    var d = diagnostics || {};
+    var lines = [];
+    lines.push('league_id: ' + esc(leagueId));
+    lines.push('source: ' + (d.fromCache ? 'sessionStorage cache' : 'fresh fetch'));
+    lines.push('weeks fetched: ' + (d.txWeeksFetched != null ? d.txWeeksFetched : '?') +
+      ' &nbsp;weeks w/ data: ' + (d.txWeeksWithData != null ? d.txWeeksWithData : '?'));
+    if (d.txWeekErrors && d.txWeekErrors.length) {
+      lines.push('week fetch errors: ' + d.txWeekErrors.map(function(e){ return 'wk' + e.week; }).join(', '));
+    }
+    lines.push('raw transactions loaded: ' + (d.txRawCount != null ? d.txRawCount : '?'));
+    if (d.statusCounts) {
+      lines.push('by status: ' + Object.keys(d.statusCounts).map(function(k){ return k + '=' + d.statusCounts[k]; }).join(', '));
+    }
+    if (d.completeTypeCounts) {
+      lines.push('complete by type: ' + (Object.keys(d.completeTypeCounts).length
+        ? Object.keys(d.completeTypeCounts).map(function(k){ return k + '=' + d.completeTypeCounts[k]; }).join(', ')
+        : 'none'));
+    }
+    lines.push('rostered players evaluated: ' + (d.rosteredPlayerCount != null ? d.rosteredPlayerCount : '?'));
+    lines.push('eligible: ' + d.eligibleCount + ' &nbsp;not eligible: ' + d.ineligibleCount + ' &nbsp;edge: ' + d.edgeCount);
+    el.innerHTML = lines.join('<br>');
+  }
+
+  var refreshBtn = $('forceRefreshBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', forceRefresh);
 
   function renderOverview(){
     if (!managers.length) {
