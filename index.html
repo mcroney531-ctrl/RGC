@@ -264,6 +264,22 @@
     margin-top:2px;
     flex-shrink:0;
   }
+  .player-headshot{
+    width:36px;
+    height:36px;
+    border-radius:8px;
+    object-fit:cover;
+    background:#eef1f8;
+    flex-shrink:0;
+  }
+  .player-headshot-lg{
+    width:52px;
+    height:52px;
+    border-radius:10px;
+    object-fit:cover;
+    background:#eef1f8;
+    flex-shrink:0;
+  }
   .player-info{flex:1;min-width:0;}
   .player-name{
     font-weight:600;
@@ -709,6 +725,7 @@
     <div class="sheet-handle"></div>
     <div class="sheet-head">
       <div class="sheet-head-row">
+        <img class="player-headshot-lg" id="sheetPlayerHeadshot" src="" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
         <div>
           <h2 class="sheet-title" id="sheetPlayerName">Player</h2>
           <div class="sheet-sub" id="sheetPlayerMeta"></div>
@@ -1336,6 +1353,10 @@
     };
   }
 
+  function playerHeadshotHtml(pid, sizeClass){
+    return '<img class="' + (sizeClass || 'player-headshot') + '" src="https://sleepercdn.com/content/nfl/players/' + esc(pid) + '.jpg" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">';
+  }
+
   var POS_ORDER = { QB:1, RB:2, WR:3, TE:4, K:5, DEF:6 };
   function posSort(a, b){
     var pa = POS_ORDER[playerInfo(a).pos] || 9;
@@ -1412,6 +1433,9 @@
 
     $('sheetPlayerName').textContent = info.name;
     $('sheetPlayerMeta').textContent = info.pos + ' • ' + info.team;
+    var headshotImg = $('sheetPlayerHeadshot');
+    headshotImg.style.visibility = 'visible';
+    headshotImg.src = 'https://sleepercdn.com/content/nfl/players/' + encodeURIComponent(pid) + '.jpg';
 
     var history = (e && e.fullHistory) ? e.fullHistory.slice() : [];
     history.sort(function(a,b){ return b.ts - a.ts; }); // newest first
@@ -1667,6 +1691,7 @@
         var isSelected = pendingSelection.indexOf(pid) !== -1;
         var canSelect = selectable && !deadlinePassed;
         out += '<div class="pick-row' + (canSelect ? ' selectable' : '') + (isSelected ? ' selected' : '') + (!selectable ? ' disabled' : '') + '"' + (canSelect ? ' data-pick="' + esc(pid) + '"' : '') + '>' +
+          playerHeadshotHtml(pid) +
           '<div class="pick-checkbox">' + (isSelected ? '&#10003;' : '') + '</div>' +
           '<div class="player-info">' +
             '<div class="player-name">' + esc(info.name) + ' <span class="mono" style="font-size:10.5px;color:#8892a6;">' + esc(info.pos) + ' ' + esc(info.team) + '</span></div>' +
@@ -1985,6 +2010,7 @@
         var info = playerInfo(pid);
         var e = eligibilityMap[pid] || {};
         out += '<div class="player-row" data-pid="' + esc(pid) + '">' +
+          playerHeadshotHtml(pid) +
           '<div class="pos-badge">' + esc(info.pos) + '</div>' +
           '<div class="player-info">' +
             '<div class="player-name">' + esc(info.name) + '</div>' +
@@ -2062,6 +2088,7 @@
 
       html += '<div class="trade-card" data-pid="' + esc(pid) + '">' +
         '<div class="player-row" style="border:none;padding:0;">' +
+          playerHeadshotHtml(pid) +
           '<div class="pos-badge">' + esc(info.pos) + '</div>' +
           '<div class="player-info">' +
             '<div class="player-name">' + esc(info.name) + '</div>' +
