@@ -290,6 +290,7 @@
   .dot-green{background:#0ea86b;}
   .dot-red{background:#e03040;}
   .dot-gold{background:#d4900a;}
+  .dot-navy{background:#0f1f3d;}
 
   /* ---------- Empty / loading / error ---------- */
   .state-block{
@@ -2001,6 +2002,12 @@
     var html = '';
     html += renderGroup('Keeper-Eligible', 'dot-green', groups.eligible, false);
     html += renderGroup('Not Keeper-Eligible', 'dot-red', groups.ineligible, true);
+    // Rough pass for now: in this league, the edge-case flag is almost
+    // entirely the commissioner manually setting last year's keepers before
+    // the season, which trips the "unrecognized transaction type" check.
+    // Surfacing that same list under a clearer label until this gets a
+    // proper dedicated classification instead of overloading "edge case".
+    html += renderGroup('Last Year’s Keepers', 'dot-navy', groups.edge, true);
     html += renderGroup('Edge Case — Needs Review', 'dot-gold', groups.edge, true);
 
     $('managerContent').innerHTML = html;
