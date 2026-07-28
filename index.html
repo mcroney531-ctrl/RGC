@@ -26,7 +26,11 @@
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
-    background:#f5f2fb;
+    background-color:#f5f2fb;
+    background-image:url('icons/brand/page-bg.jpg');
+    background-size:cover;
+    background-position:top center;
+    background-repeat:no-repeat;
     color:#1e1349;
     font-family:'Radio Canada',system-ui,-apple-system,sans-serif;
     -webkit-font-smoothing:antialiased;
@@ -36,7 +40,7 @@
     max-width:430px;
     margin:0 auto;
     min-height:100vh;
-    background:#ffffff;
+    background:transparent;
     display:flex;
     flex-direction:column;
     position:relative;
@@ -55,7 +59,7 @@
 
   /* ---------- Header ---------- */
   .topbar{
-    background:#f5f2fb;
+    background:#efe9f8;
     color:#1e1349;
     padding:18px 16px 14px;
     position:sticky;
@@ -112,7 +116,7 @@
     bottom:0;
     z-index:20;
     padding:10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
-    background:linear-gradient(to top, #f5f2fb 55%, rgba(245,242,251,0));
+    background:linear-gradient(to top, #e9e2f5 55%, rgba(233,226,245,0));
   }
   .tabbar{
     position:relative;
@@ -199,7 +203,7 @@
   .screen{
     flex:1;
     padding:14px 14px 24px;
-    background:#f5f2fb;
+    background:transparent;
   }
   .screen.hidden{display:none;}
   .hidden{display:none;}
