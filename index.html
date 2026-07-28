@@ -944,8 +944,17 @@
         diagnostics.fromCache = true;
         rebuildManagersByRoster();
         renderShellReady();
-        render();
-        loadPicksData();
+        showLoading();
+        // allPlayers isn't part of this cache blob (it's ~10MB and already
+        // has its own sessionStorage cache) - it must be (re)loaded here on
+        // every fresh page load, or every player renders as "Unknown Player".
+        loadPlayers().then(function(data){
+          allPlayers = data || {};
+          render();
+          loadPicksData();
+        }).catch(function(err){
+          showError(err);
+        });
         return;
       } catch(e){ /* fall through to fresh load */ }
     }
