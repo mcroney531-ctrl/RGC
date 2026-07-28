@@ -323,6 +323,21 @@
     box-shadow:0 2px 6px rgba(30,19,73,0.08);
   }
   .player-row:active .log-btn, .trade-card:active .log-btn{background:#e3e7f0;}
+  .draft-pill{
+    font-family:'Radio Canada',sans-serif;
+    font-size:11px;
+    font-weight:600;
+    color:#1e1349;
+    background:#eef1f8;
+    border-radius:20px;
+    padding:5px 10px;
+    white-space:nowrap;
+    flex-shrink:0;
+    align-self:flex-start;
+    margin-top:1px;
+    margin-left:auto;
+    box-shadow:0 2px 6px rgba(30,19,73,0.08);
+  }
   .pos-badge{
     font-family:'Radio Canada',sans-serif;
     font-size:10px;
@@ -1308,10 +1323,23 @@
   // same eligibility walk and the same transaction log.
   function buildDraftEvents(picks, ownerByRosterFn, seasonLabel){
     var events = [];
+    // pick_no from Sleeper is the OVERALL pick count across the whole draft;
+    // round.pick notation (e.g. "3.04") needs the pick number WITHIN that
+    // round instead, which isn't given directly. Derive league size from
+    // how many picks landed in round 1, then back it out for every pick -
+    // this holds regardless of snake order or a reversal setting, since
+    // pick_no is always sequential overall count and round is given.
+    var round1Count = 0;
+    (picks || []).forEach(function(p){ if (p && p.round === 1) round1Count++; });
+    var leagueSize = round1Count || null;
+
     (picks || []).forEach(function(p){
       if (!p || !p.player_id) return;
       var ownerId = p.picked_by ? String(p.picked_by) : (p.roster_id != null ? ownerByRosterFn(String(p.roster_id)) : null);
       if (!ownerId) return;
+      var pickInRound = (leagueSize && p.round != null && p.pick_no != null)
+        ? (p.pick_no - (p.round - 1) * leagueSize)
+        : null;
       events.push({
         pid: String(p.player_id),
         type: 'draft',
@@ -1321,10 +1349,18 @@
         txid: 'draft-' + p.draft_id + '-' + p.pick_no,
         season: seasonLabel,
         round: p.round,
-        pickNo: p.pick_no
+        pickNo: p.pick_no,
+        pickInRound: pickInRound
       });
     });
     return events;
+  }
+
+  function pad2(n){ return n < 10 ? '0' + n : String(n); }
+
+  function draftRoundPickLabel(ev){
+    if (!ev || ev.round == null || ev.pickInRound == null) return null;
+    return ev.round + '.' + pad2(ev.pickInRound);
   }
 
   function computeEligibility(){
@@ -1389,7 +1425,8 @@
           reason = 'On this roster since before available draft/transaction records.';
         } else if (addEvent.type === 'draft') {
           status = 'eligible';
-          reason = 'Drafted by this manager' + (addEvent.round != null && addEvent.pickNo != null ? ' — Round ' + addEvent.round + ', Pick ' + addEvent.pickNo : '') + '.';
+          var draftLabel0 = draftRoundPickLabel(addEvent);
+          reason = 'Drafted by this manager' + (draftLabel0 ? ' — Round ' + addEvent.round + ', Pick ' + addEvent.pickInRound + ' (' + draftLabel0 + ')' : '') + '.';
         } else if (addEvent.type === 'trade') {
           status = 'ineligible';
           reason = 'Traded from ' + managerDisplayByOwner(addEvent.dropOwner) + '.';
@@ -1431,7 +1468,8 @@
           isEdge: !!edgeReason,
           addEvent: addEvent,
           tradeChain: tradeChain,
-          fullHistory: history
+          fullHistory: history,
+          draftLabel: (addEvent && addEvent.type === 'draft') ? draftRoundPickLabel(addEvent) : null
         };
       });
     });
@@ -1546,7 +1584,8 @@
     var toName = e.addOwner ? managerDisplayByOwner(e.addOwner) : null;
 
     if (e.type === 'draft') {
-      var pickInfo = (e.round != null && e.pickNo != null) ? (' — Round ' + e.round + ', Pick ' + e.pickNo) : '';
+      var draftLabel = draftRoundPickLabel(e);
+      var pickInfo = draftLabel ? (' — Round ' + e.round + ', Pick ' + e.pickInRound + ' (' + draftLabel + ')') : '';
       if (toName) return 'Drafted by ' + toName + pickInfo + '.';
       return 'Drafted' + pickInfo + '.';
     }
@@ -2174,6 +2213,7 @@
             (e.edgeReason ? '<div class="player-reason" style="color:#d4900a;">' + esc(e.edgeReason) + '</div>' : '') +
             '<div class="log-btn">See transaction history &#8250;</div>' +
           '</div>' +
+          (e.draftLabel ? '<div class="draft-pill">Drafted ' + esc(e.draftLabel) + '</div>' : '') +
         '</div>';
       });
       out += '</div>';
