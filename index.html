@@ -7,17 +7,17 @@
 <title>Keeper Tracker</title>
 <meta name="description" content="Keeper eligibility tracker for a Sleeper fantasy football keeper league.">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0f1f3d">
-<link rel="icon" href="icons/icon-192.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/icon-192.svg">
+<meta name="theme-color" content="#1e1349">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Radio+Canada:wght@400;500;600;700&family=Radio+Canada+Condensed:wght@600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#ffffff;
-    --bg-alt:#f4f6fb;
-    --navy:#0f1f3d;
+    --bg-alt:#f5f2fb;
+    --navy:#1e1349;
     --green:#0ea86b;
     --red:#e03040;
     --gold:#d4900a;
@@ -26,8 +26,8 @@
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
-    background:#f4f6fb;
-    color:#0f1f3d;
+    background:#f5f2fb;
+    color:#1e1349;
     font-family:'Radio Canada',system-ui,-apple-system,sans-serif;
     -webkit-font-smoothing:antialiased;
     min-height:100vh;
@@ -45,7 +45,7 @@
     font-family:'Radio Canada Condensed',sans-serif;font-weight:700;
     letter-spacing:0.03em;
     margin:0;
-    color:#0f1f3d;
+    color:#1e1349;
   }
   .mono{
     font-family:'DM Mono',monospace;
@@ -55,8 +55,8 @@
 
   /* ---------- Header ---------- */
   .topbar{
-    background:#0f1f3d;
-    color:#ffffff;
+    background:#f5f2fb;
+    color:#1e1349;
     padding:18px 16px 14px;
     position:sticky;
     top:0;
@@ -70,7 +70,7 @@
   .back-btn{
     background:none;
     border:none;
-    color:#ffffff;
+    color:#1e1349;
     font-size:22px;
     padding:0 6px 0 0;
     cursor:pointer;
@@ -79,68 +79,102 @@
   .home-btn{
     background:none;
     border:none;
-    color:#ffffff;
-    font-size:20px;
     padding:0;
     cursor:pointer;
     line-height:1;
     margin-left:auto;
     flex-shrink:0;
+    width:34px;
+    height:34px;
+  }
+  .home-btn img{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    display:block;
   }
   .topbar h1{
     font-size:26px;
-    color:#ffffff;
+    color:#1e1349;
     line-height:1;
   }
   .topbar .sub{
     font-family:'DM Mono',monospace;
     font-size:11px;
-    color:#9fb0d1;
+    color:#7d72a6;
     margin-top:4px;
     letter-spacing:0.02em;
   }
 
   /* ---------- Tab bar ---------- */
-  .tabbar{
-    display:flex;
-    border-top:1px solid #e3e7f0;
-    background:#ffffff;
+  .tabbar-wrap{
     position:sticky;
     bottom:0;
     z-index:20;
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+    background:linear-gradient(to top, #f5f2fb 55%, rgba(245,242,251,0));
+  }
+  .tabbar{
+    display:flex;
+    align-items:center;
+    background:#ffffff;
+    border-radius:999px;
+    box-shadow:0 8px 20px rgba(30,19,73,0.18);
+    padding:6px 8px;
   }
   .tab-btn{
     flex:1;
     background:none;
     border:none;
-    padding:10px 4px 8px;
+    padding:8px 2px 6px;
     text-align:center;
     cursor:pointer;
-    color:#8892a6;
+    color:#aca3cf;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
   }
-  .tab-btn .tab-icon{
+  .tab-btn svg{
+    width:20px;
+    height:20px;
     display:block;
-    font-size:18px;
-    margin-bottom:2px;
   }
   .tab-btn .tab-label{
     font-family:'DM Mono',monospace;
-    font-size:10px;
-    letter-spacing:0.03em;
+    font-size:9.5px;
+    letter-spacing:0.02em;
     text-transform:uppercase;
   }
   .tab-btn.active{
-    color:#0f1f3d;
+    color:#1e1349;
   }
   .tab-btn.active .tab-label{
     font-weight:700;
+  }
+  .tab-btn-center{
+    flex:0 0 auto;
+    padding:0 6px;
+  }
+  .tab-btn-center img{
+    width:50px;
+    height:50px;
+    border-radius:50%;
+    margin-top:-24px;
+    object-fit:cover;
+    border:3px solid #ffffff;
+    box-shadow:0 6px 14px rgba(30,19,73,0.35);
+    display:block;
+  }
+  .tab-btn-center .tab-label{
+    margin-top:2px;
   }
 
   /* ---------- Main content ---------- */
   .screen{
     flex:1;
     padding:14px 14px 24px;
-    background:#f4f6fb;
+    background:#f5f2fb;
   }
   .screen.hidden{display:none;}
   .hidden{display:none;}
@@ -150,13 +184,13 @@
     background:#ffffff;
     border:1px solid #e3e7f0;
     border-radius:12px;
-    box-shadow:0 3px 0 rgba(15,31,61,0.12);
+    box-shadow:0 3px 0 rgba(30,19,73,0.12);
     padding:12px 14px;
     margin-bottom:12px;
   }
   .card:active{
     transform:translateY(1px);
-    box-shadow:0 2px 0 rgba(15,31,61,0.12);
+    box-shadow:0 2px 0 rgba(30,19,73,0.12);
   }
 
   .manager-card{
@@ -168,8 +202,8 @@
   .avatar{
     width:46px;
     height:46px;
-    border-radius:10px;
-    background:#0f1f3d;
+    border-radius:50%;
+    background:#1e1349;
     color:#fff;
     display:flex;
     align-items:center;
@@ -246,7 +280,7 @@
     cursor:pointer;
   }
   .player-row:last-child{border-bottom:none;}
-  .player-row:active{background:#f4f6fb;}
+  .player-row:active{background:#f5f2fb;}
   .log-btn{
     display:inline-flex;
     align-items:center;
@@ -254,7 +288,7 @@
     font-family:'DM Mono',monospace;
     font-size:10.5px;
     font-weight:500;
-    color:#0f1f3d;
+    color:#1e1349;
     background:#eef1f8;
     border:1px solid #d5dbe8;
     border-radius:20px;
@@ -268,7 +302,7 @@
     font-size:10px;
     font-weight:700;
     color:#ffffff;
-    background:#0f1f3d;
+    background:#1e1349;
     border-radius:5px;
     padding:3px 5px;
     min-width:30px;
@@ -279,7 +313,7 @@
   .player-headshot{
     width:36px;
     height:36px;
-    border-radius:8px;
+    border-radius:50%;
     object-fit:cover;
     background:#eef1f8;
     flex-shrink:0;
@@ -287,7 +321,7 @@
   .player-headshot-lg{
     width:52px;
     height:52px;
-    border-radius:10px;
+    border-radius:50%;
     object-fit:cover;
     background:#eef1f8;
     flex-shrink:0;
@@ -318,7 +352,25 @@
   .dot-green{background:#0ea86b;}
   .dot-red{background:#e03040;}
   .dot-gold{background:#d4900a;}
-  .dot-navy{background:#0f1f3d;}
+  .dot-navy{background:#1e1349;}
+
+  /* ---------- Hero logo (Overview) ---------- */
+  .hero-logo-card{
+    background:#ffffff;
+    border:1px solid #e3e7f0;
+    border-radius:20px;
+    box-shadow:0 3px 0 rgba(30,19,73,0.12);
+    padding:22px;
+    margin-bottom:16px;
+    display:flex;
+    justify-content:center;
+  }
+  .hero-logo-img{
+    width:55%;
+    max-width:200px;
+    height:auto;
+    display:block;
+  }
 
   /* ---------- Empty / loading / error ---------- */
   .state-block{
@@ -331,7 +383,7 @@
   .spinner{
     width:34px;height:34px;
     border:3px solid #e3e7f0;
-    border-top-color:#0f1f3d;
+    border-top-color:#1e1349;
     border-radius:50%;
     margin:0 auto 16px;
     animation:spin 0.8s linear infinite;
@@ -340,7 +392,7 @@
 
   .btn{
     display:inline-block;
-    background:#0f1f3d;
+    background:#1e1349;
     color:#ffffff;
     border:none;
     border-radius:8px;
@@ -349,9 +401,9 @@
     font-size:13px;
     font-weight:500;
     cursor:pointer;
-    box-shadow:0 3px 0 rgba(15,31,61,0.35);
+    box-shadow:0 3px 0 rgba(30,19,73,0.35);
   }
-  .btn:active{transform:translateY(1px);box-shadow:0 2px 0 rgba(15,31,61,0.35);}
+  .btn:active{transform:translateY(1px);box-shadow:0 2px 0 rgba(30,19,73,0.35);}
 
   .text-input{
     width:100%;
@@ -361,8 +413,8 @@
     font-family:'DM Mono',monospace;
     font-size:14px;
     margin-bottom:12px;
-    background:#f4f6fb;
-    color:#0f1f3d;
+    background:#f5f2fb;
+    color:#1e1349;
   }
 
   /* ---------- Traded players board ---------- */
@@ -370,12 +422,12 @@
     background:#ffffff;
     border:1px solid #e3e7f0;
     border-radius:12px;
-    box-shadow:0 3px 0 rgba(15,31,61,0.12);
+    box-shadow:0 3px 0 rgba(30,19,73,0.12);
     padding:12px 14px;
     margin-bottom:10px;
     cursor:pointer;
   }
-  .trade-card:active{background:#f4f6fb;}
+  .trade-card:active{background:#f5f2fb;}
   .trade-flow{
     display:flex;
     align-items:center;
@@ -401,20 +453,20 @@
     border-radius:20px;
     border:1px solid #cdd4e3;
     background:#ffffff;
-    color:#0f1f3d;
+    color:#1e1349;
     white-space:nowrap;
     cursor:pointer;
     flex-shrink:0;
   }
   .filter-chip.active{
-    background:#0f1f3d;
+    background:#1e1349;
     color:#ffffff;
-    border-color:#0f1f3d;
+    border-color:#1e1349;
   }
 
   /* ---------- About screen ---------- */
   .about-block{margin-bottom:20px;}
-  .about-block h3{font-size:19px;margin-bottom:6px;color:#0f1f3d;}
+  .about-block h3{font-size:19px;margin-bottom:6px;color:#1e1349;}
   .about-block p, .about-block li{
     font-size:14px;
     line-height:1.55;
@@ -437,7 +489,7 @@
   .status-banner.st-pending{background:rgba(212,144,10,0.08);border-color:rgba(212,144,10,0.3);}
   .status-banner.st-approved{background:rgba(14,168,107,0.08);border-color:rgba(14,168,107,0.3);}
   .status-banner.st-rejected{background:rgba(224,48,64,0.08);border-color:rgba(224,48,64,0.3);}
-  .status-banner.st-none{background:#f4f6fb;}
+  .status-banner.st-none{background:#f5f2fb;}
   .status-banner-title{
     font-family:'Radio Canada Condensed',sans-serif;font-weight:700;
     font-size:18px;
@@ -486,7 +538,7 @@
     position:sticky;
     bottom:60px;
     padding:10px 0 4px;
-    background:linear-gradient(to top, #f4f6fb 70%, rgba(244,246,251,0));
+    background:linear-gradient(to top, #f5f2fb 70%, rgba(244,246,251,0));
   }
   .btn-block{display:block;width:100%;text-align:center;}
   .btn:disabled{opacity:0.45;box-shadow:none;}
@@ -499,7 +551,7 @@
 
   /* ---------- Admin screen ---------- */
   .admin-banner{
-    background:#0f1f3d;
+    background:#1e1349;
     color:#fff;
     padding:10px 14px;
     border-radius:10px;
@@ -537,7 +589,7 @@
     display:none;
     position:fixed;
     inset:0;
-    background:rgba(15,31,61,0.45);
+    background:rgba(30,19,73,0.45);
     z-index:40;
   }
   .sheet-backdrop.open{display:block;}
@@ -553,7 +605,7 @@
     background:#ffffff;
     border-radius:18px 18px 0 0;
     z-index:41;
-    box-shadow:0 -4px 0 rgba(15,31,61,0.12);
+    box-shadow:0 -4px 0 rgba(30,19,73,0.12);
     display:none;
     flex-direction:column;
   }
@@ -575,9 +627,9 @@
     gap:10px;
   }
   .sheet-close{
-    background:#f4f6fb;
+    background:#f5f2fb;
     border:none;
-    color:#0f1f3d;
+    color:#1e1349;
     width:28px;height:28px;
     border-radius:50%;
     font-size:16px;
@@ -613,7 +665,7 @@
   }
   .log-dot{
     width:9px;height:9px;border-radius:50%;
-    background:#0f1f3d;
+    background:#1e1349;
     flex-shrink:0;
   }
   .log-desc{
@@ -644,13 +696,16 @@
       <div>
         <h1 id="screenTitle">Keeper Tracker</h1>
       </div>
-      <button class="home-btn" id="homeBtn" aria-label="Home">&#8962;</button>
+      <button class="home-btn" id="homeBtn" aria-label="Home"><img src="icons/brand/crown-96.png" alt=""></button>
     </div>
     <div class="sub" id="topbarSub">loading league...</div>
   </div>
 
   <!-- SCREEN 1: League Overview -->
   <div class="screen" id="screen-overview">
+    <div class="hero-logo-card">
+      <img src="icons/brand/logo-full.jpg" alt="" class="hero-logo-img">
+    </div>
     <div id="overviewContent">
       <div class="state-block"><div class="spinner"></div><p>Loading league data from Sleeper...</p></div>
     </div>
@@ -709,28 +764,30 @@
     </div>
     <div class="about-block">
       <h3>Diagnostics</h3>
-      <div id="diagnosticsBlock" class="mono" style="font-size:12px;line-height:1.7;color:#33394a;background:#f4f6fb;border:1px solid #e3e7f0;border-radius:8px;padding:10px 12px;">loading...</div>
+      <div id="diagnosticsBlock" class="mono" style="font-size:12px;line-height:1.7;color:#33394a;background:#f5f2fb;border:1px solid #e3e7f0;border-radius:8px;padding:10px 12px;">loading...</div>
       <button class="btn" id="forceRefreshBtn" style="margin-top:10px;">Force Refresh (clear cache &amp; re-fetch)</button>
     </div>
   </div>
 
-  <div class="tabbar" id="tabbar">
-    <button class="tab-btn active" data-tab="overview">
-      <span class="tab-icon">&#128202;</span>
-      <span class="tab-label">Overview</span>
-    </button>
-    <button class="tab-btn" data-tab="traded">
-      <span class="tab-icon">&#128257;</span>
-      <span class="tab-label">Traded</span>
-    </button>
-    <button class="tab-btn" data-tab="picks">
-      <span class="tab-icon">&#127942;</span>
-      <span class="tab-label">Picks</span>
-    </button>
-    <button class="tab-btn" data-tab="about">
-      <span class="tab-icon">&#8505;</span>
-      <span class="tab-label">About</span>
-    </button>
+  <div class="tabbar-wrap">
+    <div class="tabbar" id="tabbar">
+      <button class="tab-btn active" data-tab="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
+        <span class="tab-label">Overview</span>
+      </button>
+      <button class="tab-btn" data-tab="traded">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3l4 4-4 4"/><path d="M11 7H4a2 2 0 0 0-2 2v1"/><path d="M17 21l-4-4 4-4"/><path d="M13 17h7a2 2 0 0 0 2-2v-1"/></svg>
+        <span class="tab-label">Traded</span>
+      </button>
+      <button class="tab-btn tab-btn-center" data-tab="picks">
+        <img src="icons/brand/logo-mini-80.png" alt="">
+        <span class="tab-label">Picks</span>
+      </button>
+      <button class="tab-btn" data-tab="about">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor" stroke="none"/></svg>
+        <span class="tab-label">About</span>
+      </button>
+    </div>
   </div>
 
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
@@ -1527,7 +1584,7 @@
     var adminTabBtn = document.createElement('button');
     adminTabBtn.className = 'tab-btn';
     adminTabBtn.setAttribute('data-tab', 'admin');
-    adminTabBtn.innerHTML = '<span class="tab-icon">&#128737;</span><span class="tab-label">Admin</span>';
+    adminTabBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg><span class="tab-label">Admin</span>';
     $('tabbar').appendChild(adminTabBtn);
   }
 
