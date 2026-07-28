@@ -76,6 +76,17 @@
     cursor:pointer;
     line-height:1;
   }
+  .home-btn{
+    background:none;
+    border:none;
+    color:#ffffff;
+    font-size:20px;
+    padding:0;
+    cursor:pointer;
+    line-height:1;
+    margin-left:auto;
+    flex-shrink:0;
+  }
   .topbar h1{
     font-size:26px;
     color:#ffffff;
@@ -132,6 +143,7 @@
     background:#f4f6fb;
   }
   .screen.hidden{display:none;}
+  .hidden{display:none;}
 
   /* ---------- Cards ---------- */
   .card{
@@ -632,6 +644,7 @@
       <div>
         <h1 id="screenTitle">Keeper Tracker</h1>
       </div>
+      <button class="home-btn" id="homeBtn" aria-label="Home">&#8962;</button>
     </div>
     <div class="sub" id="topbarSub">loading league...</div>
   </div>
@@ -1493,6 +1506,12 @@
     render();
   }
 
+  function goHome(){
+    currentManagerRosterId = null;
+    currentTab = 'overview';
+    render();
+  }
+
   function goBack(){
     currentManagerRosterId = null;
     render();
@@ -1513,6 +1532,7 @@
   }
 
   $('backBtn').addEventListener('click', goBack);
+  $('homeBtn').addEventListener('click', goHome);
 
   // ============================================================
   // RENDER
