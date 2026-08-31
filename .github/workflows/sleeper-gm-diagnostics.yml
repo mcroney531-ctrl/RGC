@@ -6,6 +6,12 @@ name: Sleeper GM diagnostics
 # access (the dev sandbox that wrote this code can't reach api.sleeper.app).
 on:
   workflow_dispatch: {}
+  # workflow_dispatch only becomes API-triggerable once this file exists on
+  # the repo's default branch. Until this is merged, push to this branch to
+  # run it — remove this trigger once workflow_dispatch works on its own.
+  push:
+    branches:
+      - claude/new-session-822im2
 
 jobs:
   diagnostics:
