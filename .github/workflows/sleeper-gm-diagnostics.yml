@@ -1,0 +1,21 @@
+name: Sleeper GM diagnostics
+
+# Manual-only verification run for the Phase 1 fetch nodes. This is not the
+# eventual scheduled workflow — it exists so we can confirm the fetch nodes
+# work against the real league from an environment with open network
+# access (the dev sandbox that wrote this code can't reach api.sleeper.app).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sleeper-gm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node scripts/diagnostics.js

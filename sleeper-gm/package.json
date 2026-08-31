@@ -1,0 +1,12 @@
+{
+  "name": "sleeper-auto-gm",
+  "private": true,
+  "description": "Autonomous Sleeper GM for the empty roster slot. Fully separate project from Keeper Tracker/GM Command — no shared code or state, isolated to this folder.",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "diagnostics": "node scripts/diagnostics.js"
+  }
+}
